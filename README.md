@@ -5,6 +5,7 @@
 [![npm](https://img.shields.io/npm/v/@strand-ai/lambda-mcp)](https://www.npmjs.com/package/@strand-ai/lambda-mcp)
 [![MCP](https://img.shields.io/badge/MCP-compatible-8A2BE2)](https://modelcontextprotocol.io)
 [![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_Server-0098FF?logo=visualstudiocode&logoColor=white)](https://vscode.dev/redirect/mcp/install?name=lambda-labs&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40strand-ai%2Flambda-mcp%22%5D%7D)
+[![Install in Cursor](https://img.shields.io/badge/Cursor-Install_Server-000000?logo=cursor&logoColor=white)](cursor://anysphere.cursor-deeplink/mcp/install?name=lambda-labs&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40strand-ai%2Flambda-mcp%22%5D%7D)
 
 A fast CLI and MCP server for managing [Lambda Labs](https://lambdalabs.com/) cloud GPU instances.
 
@@ -110,6 +111,24 @@ The easiest way to use `lambda-mcp` is via npx—no installation required:
 ```bash
 npx @strand-ai/lambda-mcp
 ```
+
+### Options
+
+| Flag | Description |
+|------|-------------|
+| `--eager` | Execute API key command at startup instead of on first use |
+
+#### API Key Loading
+
+When using `LAMBDA_API_KEY_COMMAND`, the MCP server defers command execution until the first API request by default. This avoids unnecessary delays when starting Claude Code if you don't use Lambda tools in every session.
+
+Use `--eager` to execute the command at startup instead:
+
+```bash
+npx @strand-ai/lambda-mcp --eager
+```
+
+> **Note:** The CLI (`lambda`) always executes the API key command at startup since it's used for immediate operations.
 
 ### Available Tools
 
