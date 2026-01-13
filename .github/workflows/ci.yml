@@ -59,16 +59,13 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            artifact_name: lambda_cli
-            asset_name: lambda_cli-x86_64-unknown-linux-gnu
+            asset_name: lambda-cli-x86_64-unknown-linux-gnu
           - os: macos-latest
             target: x86_64-apple-darwin
-            artifact_name: lambda_cli
-            asset_name: lambda_cli-x86_64-apple-darwin
+            asset_name: lambda-cli-x86_64-apple-darwin
           - os: macos-latest
             target: aarch64-apple-darwin
-            artifact_name: lambda_cli
-            asset_name: lambda_cli-aarch64-apple-darwin
+            asset_name: lambda-cli-aarch64-apple-darwin
     steps:
       - uses: actions/checkout@v4
 
@@ -94,7 +91,7 @@ jobs:
       - name: Create tarball
         run: |
           cd target/${{ matrix.target }}/release
-          tar -czvf ../../../${{ matrix.asset_name }}.tar.gz ${{ matrix.artifact_name }}
+          tar -czvf ../../../${{ matrix.asset_name }}.tar.gz lambda lambda-mcp
           cd ../../..
 
       - name: Upload artifact
