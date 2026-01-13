@@ -120,51 +120,16 @@ npx @strand-ai/lambda-mcp
 
 ### Claude Code Setup
 
-Add to `~/.claude/claude_desktop_config.json`:
-
-**Using npx (no installation needed):**
-```json
-{
-  "mcpServers": {
-    "lambda-labs": {
-      "command": "npx",
-      "args": ["-y", "@strand-ai/lambda-mcp"],
-      "env": {
-        "LAMBDA_API_KEY": "your-api-key-here"
-      }
-    }
-  }
-}
-```
-
-**Using installed binary:**
-```json
-{
-  "mcpServers": {
-    "lambda-labs": {
-      "command": "lambda-mcp",
-      "env": {
-        "LAMBDA_API_KEY": "your-api-key-here"
-      }
-    }
-  }
-}
+```bash
+claude mcp add lambda-labs -s user -e LAMBDA_API_KEY=your-api-key -- npx -y @strand-ai/lambda-mcp
 ```
 
 **With 1Password:**
-```json
-{
-  "mcpServers": {
-    "lambda-labs": {
-      "command": "npx",
-      "args": ["-y", "@strand-ai/lambda-mcp"],
-      "env": {
-        "LAMBDA_API_KEY_COMMAND": "op read op://Personal/Lambda/api-key"
-      }
-    }
-  }
-}
+```bash
+claude mcp add lambda-labs -s user -e LAMBDA_API_KEY_COMMAND="op read op://Personal/Lambda/api-key" -- npx -y @strand-ai/lambda-mcp
 ```
+
+Then restart Claude Code.
 
 ### Example Prompts
 
