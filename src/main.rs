@@ -41,6 +41,9 @@ enum Commands {
         /// Region to launch in (auto-selects first available if not specified)
         #[arg(short, long)]
         region: Option<String>,
+        /// Filesystem name to attach (must be in same region)
+        #[arg(short, long)]
+        filesystem: Option<String>,
     },
     /// Stop a specified GPU instance
     Stop {
@@ -64,6 +67,26 @@ enum Commands {
         /// Optional name for the instance when launched
         #[arg(short, long)]
         name: Option<String>,
+        /// Filesystem name to attach when launched (must be in same region)
+        #[arg(short, long)]
+        filesystem: Option<String>,
+    },
+    /// List all filesystems (persistent storage)
+    Filesystems,
+    /// Create a new filesystem
+    CreateFilesystem {
+        /// Name for the filesystem
+        #[arg(short, long)]
+        name: String,
+        /// Region to create the filesystem in
+        #[arg(short, long)]
+        region: String,
+    },
+    /// Delete a filesystem
+    DeleteFilesystem {
+        /// Filesystem ID to delete
+        #[arg(short = 'i', long)]
+        filesystem_id: String,
     },
 }
 
@@ -88,7 +111,16 @@ fn run() -> Result<()> {
             ssh,
             name,
             region,
-        }) => start_instance(&rt, &client, gpu, ssh, name.as_deref(), region.as_deref()),
+            filesystem,
+        }) => start_instance(
+            &rt,
+            &client,
+            gpu,
+            ssh,
+            name.as_deref(),
+            region.as_deref(),
+            filesystem.as_deref(),
+        ),
         Some(Commands::Stop { instance_id }) => stop_instance(&rt, &client, instance_id),
         Some(Commands::Running) => list_running_instances(&rt, &client),
         Some(Commands::Find {
@@ -96,7 +128,23 @@ fn run() -> Result<()> {
             ssh,
             interval,
             name,
-        }) => find_and_start_instance(&rt, &client, gpu, ssh, *interval, name.as_deref()),
+            filesystem,
+        }) => find_and_start_instance(
+            &rt,
+            &client,
+            gpu,
+            ssh,
+            *interval,
+            name.as_deref(),
+            filesystem.as_deref(),
+        ),
+        Some(Commands::Filesystems) => list_filesystems(&rt, &client),
+        Some(Commands::CreateFilesystem { name, region }) => {
+            create_filesystem(&rt, &client, name, region)
+        }
+        Some(Commands::DeleteFilesystem { filesystem_id }) => {
+            delete_filesystem(&rt, &client, filesystem_id)
+        }
         None => validate_api_key(&rt, &client),
     }
 }
@@ -156,15 +204,22 @@ fn start_instance(
     ssh: &str,
     name: Option<&str>,
     region: Option<&str>,
+    filesystem: Option<&str>,
 ) -> Result<()> {
+    let fs_info = filesystem
+        .map(|f| format!(" with filesystem '{}'", f.magenta()))
+        .unwrap_or_default();
     println!(
-        "Launching {} {}...",
+        "Launching {} {}{}...",
         gpu.green(),
         name.map(|n| format!("as '{}'", n.cyan()))
-            .unwrap_or_default()
+            .unwrap_or_default(),
+        fs_info
     );
 
-    let result = rt.block_on(client.launch_instance(gpu, ssh, name, region))?;
+    let result = rt.block_on(client.launch_instance_with_filesystem(
+        gpu, ssh, name, region, filesystem,
+    ))?;
 
     println!(
         "{} Instance {} launched in region {}",
@@ -303,6 +358,7 @@ fn find_and_start_instance(
     ssh: &str,
     interval: u64,
     name: Option<&str>,
+    filesystem: Option<&str>,
 ) -> Result<()> {
     if ssh.is_empty() {
         return Err(LambdaError::SshKeyRequired.into());
@@ -335,7 +391,7 @@ fn find_and_start_instance(
                     regions.join(", ").blue()
                 );
 
-                return start_instance(rt, client, gpu, ssh, name, None);
+                return start_instance(rt, client, gpu, ssh, name, None, filesystem);
             }
             Ok(_) => {
                 // No availability
@@ -360,4 +416,89 @@ fn find_and_start_instance(
         table.printstd();
         println!("\nNext check in {} seconds... (Ctrl+C to stop)", interval);
     }
+}
+
+fn list_filesystems(rt: &Runtime, client: &LambdaClient) -> Result<()> {
+    let filesystems = rt.block_on(client.list_filesystems())?;
+
+    if filesystems.is_empty() {
+        println!("{}", "No filesystems".yellow());
+        return Ok(());
+    }
+
+    let mut table = Table::new();
+    table.add_row(row![
+        "ID",
+        "Name",
+        "Region",
+        "Mount Point",
+        "In Use",
+        "Bytes Used",
+        "Created"
+    ]);
+
+    for fs in filesystems {
+        let in_use = if fs.is_in_use {
+            "Yes".green().to_string()
+        } else {
+            "No".dimmed().to_string()
+        };
+
+        let bytes_str = if fs.bytes_used > 1_000_000_000 {
+            format!("{:.2} GB", fs.bytes_used as f64 / 1_000_000_000.0)
+        } else if fs.bytes_used > 1_000_000 {
+            format!("{:.2} MB", fs.bytes_used as f64 / 1_000_000.0)
+        } else if fs.bytes_used > 1_000 {
+            format!("{:.2} KB", fs.bytes_used as f64 / 1_000.0)
+        } else {
+            format!("{} B", fs.bytes_used)
+        };
+
+        table.add_row(row![
+            fs.id.cyan(),
+            fs.name.green(),
+            fs.region.name.blue(),
+            fs.mount_point,
+            in_use,
+            bytes_str,
+            fs.created
+        ]);
+    }
+
+    table.printstd();
+    Ok(())
+}
+
+fn create_filesystem(rt: &Runtime, client: &LambdaClient, name: &str, region: &str) -> Result<()> {
+    println!(
+        "Creating filesystem '{}' in region {}...",
+        name.green(),
+        region.blue()
+    );
+
+    let fs = rt.block_on(client.create_filesystem(name, region))?;
+
+    println!(
+        "{} Filesystem '{}' created",
+        "Success!".green().bold(),
+        fs.name.green()
+    );
+    println!("  ID: {}", fs.id.cyan());
+    println!("  Mount point: {}", fs.mount_point);
+    println!("  Region: {}", fs.region.name.blue());
+
+    Ok(())
+}
+
+fn delete_filesystem(rt: &Runtime, client: &LambdaClient, filesystem_id: &str) -> Result<()> {
+    println!("Deleting filesystem {}...", filesystem_id.cyan());
+
+    rt.block_on(client.delete_filesystem(filesystem_id))?;
+
+    println!(
+        "{} Filesystem {} deleted",
+        "Success!".green().bold(),
+        filesystem_id.cyan()
+    );
+    Ok(())
 }

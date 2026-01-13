@@ -64,6 +64,25 @@ pub struct RegionInfo {
     pub name: Option<String>,
 }
 
+/// Filesystem (persistent storage) information
+#[derive(Deserialize, Debug, Clone, Serialize)]
+pub struct Filesystem {
+    pub id: String,
+    pub name: String,
+    pub mount_point: String,
+    pub created: String,
+    pub region: FilesystemRegion,
+    pub is_in_use: bool,
+    #[serde(default)]
+    pub bytes_used: u64,
+}
+
+#[derive(Deserialize, Debug, Clone, Serialize)]
+pub struct FilesystemRegion {
+    pub name: String,
+    pub description: String,
+}
+
 #[derive(Deserialize, Debug)]
 pub struct LaunchResponse {
     pub instance_ids: Vec<String>,
@@ -317,6 +336,19 @@ impl LambdaClient {
         name: Option<&str>,
         region: Option<&str>,
     ) -> Result<LaunchResult> {
+        self.launch_instance_with_filesystem(gpu, ssh_key, name, region, None)
+            .await
+    }
+
+    /// Launch a new instance with optional filesystem attachment
+    pub async fn launch_instance_with_filesystem(
+        &self,
+        gpu: &str,
+        ssh_key: &str,
+        name: Option<&str>,
+        region: Option<&str>,
+        filesystem: Option<&str>,
+    ) -> Result<LaunchResult> {
         let instance_type_response = self
             .get_instance_type(gpu)
             .await?
@@ -363,6 +395,10 @@ impl LambdaClient {
 
         if let Some(instance_name) = name {
             payload["name"] = serde_json::Value::String(instance_name.to_string());
+        }
+
+        if let Some(fs_name) = filesystem {
+            payload["file_system_names"] = serde_json::json!([fs_name]);
         }
 
         let api_key = self.get_api_key()?;
@@ -490,6 +526,83 @@ impl LambdaClient {
             .into_iter()
             .map(|r| r.name)
             .collect())
+    }
+
+    /// List all filesystems
+    pub async fn list_filesystems(&self) -> Result<Vec<Filesystem>> {
+        let api_key = self.get_api_key()?;
+        let url = format!("{}/file-systems", API_BASE_URL);
+        let response = self
+            .client
+            .get(&url)
+            .header(AUTHORIZATION, format!("Bearer {}", api_key))
+            .send()
+            .await
+            .context("Failed to fetch filesystems")?;
+
+        if !response.status().is_success() {
+            let error_msg = Self::parse_error_response(response).await;
+            return Err(anyhow!("Failed to list filesystems: {}", error_msg));
+        }
+
+        let response: ApiResponse<Vec<Filesystem>> = response
+            .json()
+            .await
+            .context("Failed to parse filesystems response")?;
+
+        Ok(response.data)
+    }
+
+    /// Create a new filesystem
+    pub async fn create_filesystem(&self, name: &str, region: &str) -> Result<Filesystem> {
+        let api_key = self.get_api_key()?;
+        let url = format!("{}/file-systems", API_BASE_URL);
+        let payload = serde_json::json!({
+            "name": name,
+            "region_name": region
+        });
+
+        let response = self
+            .client
+            .post(&url)
+            .header(AUTHORIZATION, format!("Bearer {}", api_key))
+            .json(&payload)
+            .send()
+            .await
+            .context("Failed to create filesystem")?;
+
+        if !response.status().is_success() {
+            let error_msg = Self::parse_error_response(response).await;
+            return Err(anyhow!("Failed to create filesystem: {}", error_msg));
+        }
+
+        let response: ApiResponse<Filesystem> = response
+            .json()
+            .await
+            .context("Failed to parse create filesystem response")?;
+
+        Ok(response.data)
+    }
+
+    /// Delete a filesystem
+    pub async fn delete_filesystem(&self, filesystem_id: &str) -> Result<()> {
+        let api_key = self.get_api_key()?;
+        let url = format!("{}/file-systems/{}", API_BASE_URL, filesystem_id);
+
+        let response = self
+            .client
+            .delete(&url)
+            .header(AUTHORIZATION, format!("Bearer {}", api_key))
+            .send()
+            .await
+            .context("Failed to delete filesystem")?;
+
+        if !response.status().is_success() {
+            let error_msg = Self::parse_error_response(response).await;
+            return Err(anyhow!("Failed to delete filesystem: {}", error_msg));
+        }
+
+        Ok(())
     }
 
     async fn parse_error_response(response: reqwest::Response) -> String {

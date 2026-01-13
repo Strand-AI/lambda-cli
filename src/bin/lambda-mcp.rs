@@ -1,5 +1,5 @@
 use anyhow::Result;
-use lambda_cli::api::{Instance, InstanceTypeData, LambdaClient};
+use lambda_cli::api::{Filesystem, Instance, InstanceTypeData, LambdaClient};
 use rmcp::handler::server::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{CallToolResult, Content, ServerCapabilities, ServerInfo};
@@ -76,6 +76,36 @@ impl LambdaService {
         }
         output
     }
+
+    fn format_filesystems(filesystems: &[Filesystem]) -> String {
+        if filesystems.is_empty() {
+            return "No filesystems.".to_string();
+        }
+        let mut output = String::from("Filesystems:\n\n");
+        for fs in filesystems {
+            let bytes_str = if fs.bytes_used > 1_000_000_000 {
+                format!("{:.2} GB", fs.bytes_used as f64 / 1_000_000_000.0)
+            } else if fs.bytes_used > 1_000_000 {
+                format!("{:.2} MB", fs.bytes_used as f64 / 1_000_000.0)
+            } else if fs.bytes_used > 1_000 {
+                format!("{:.2} KB", fs.bytes_used as f64 / 1_000.0)
+            } else {
+                format!("{} B", fs.bytes_used)
+            };
+
+            output.push_str(&format!(
+                "• {} ({})\n  ID: {}\n  Mount: {}\n  Region: {}\n  In Use: {} | Size: {}\n\n",
+                fs.name,
+                fs.created,
+                fs.id,
+                fs.mount_point,
+                fs.region.name,
+                if fs.is_in_use { "Yes" } else { "No" },
+                bytes_str
+            ));
+        }
+        output
+    }
 }
 
 // Tool parameter types
@@ -89,6 +119,8 @@ struct StartInstanceParams {
     name: Option<String>,
     /// Optional region to launch in (auto-selects if not specified)
     region: Option<String>,
+    /// Optional filesystem name to attach (must be in the same region)
+    filesystem: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -101,6 +133,20 @@ struct StopInstanceParams {
 struct CheckAvailabilityParams {
     /// GPU instance type to check (e.g., gpu_1x_h100)
     gpu: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct CreateFilesystemParams {
+    /// Name for the filesystem
+    name: String,
+    /// Region to create the filesystem in (e.g., us-east-1)
+    region: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct DeleteFilesystemParams {
+    /// Filesystem ID to delete
+    filesystem_id: String,
 }
 
 #[tool_router]
@@ -120,25 +166,32 @@ impl LambdaService {
         )]))
     }
 
-    #[tool(description = "Launch a new GPU instance. Returns instance ID and connection details.")]
+    #[tool(description = "Launch a new GPU instance. Returns instance ID and connection details. Optionally attach a filesystem (must be in the same region).")]
     async fn start_instance(
         &self,
         Parameters(params): Parameters<StartInstanceParams>,
     ) -> Result<CallToolResult, McpError> {
         let result = self
             .client
-            .launch_instance(
+            .launch_instance_with_filesystem(
                 &params.gpu,
                 &params.ssh_key,
                 params.name.as_deref(),
                 params.region.as_deref(),
+                params.filesystem.as_deref(),
             )
             .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
+        let fs_info = params
+            .filesystem
+            .as_ref()
+            .map(|f| format!("\nFilesystem: {} (mounted at /lambda/nfs/{})", f, f))
+            .unwrap_or_default();
+
         Ok(CallToolResult::success(vec![Content::text(format!(
-            "Instance launched successfully!\n\nInstance ID: {}\nRegion: {}\n\nNote: Instance may take a few minutes to become active. Use 'list_running_instances' to check status.",
-            result.instance_id, result.region
+            "Instance launched successfully!\n\nInstance ID: {}\nRegion: {}{}\n\nNote: Instance may take a few minutes to become active. Use 'list_running_instances' to check status.",
+            result.instance_id, result.region, fs_info
         ))]))
     }
 
@@ -201,6 +254,56 @@ impl LambdaService {
 
         Ok(CallToolResult::success(vec![Content::text(message)]))
     }
+
+    #[tool(
+        description = "List all filesystems (persistent storage). Filesystems can be attached to instances at launch time."
+    )]
+    async fn list_filesystems(&self) -> Result<CallToolResult, McpError> {
+        let filesystems = self
+            .client
+            .list_filesystems()
+            .await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        Ok(CallToolResult::success(vec![Content::text(
+            Self::format_filesystems(&filesystems),
+        )]))
+    }
+
+    #[tool(
+        description = "Create a new filesystem (persistent storage). Filesystems must be in the same region as instances they attach to."
+    )]
+    async fn create_filesystem(
+        &self,
+        Parameters(params): Parameters<CreateFilesystemParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let fs = self
+            .client
+            .create_filesystem(&params.name, &params.region)
+            .await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        Ok(CallToolResult::success(vec![Content::text(format!(
+            "Filesystem created successfully!\n\nName: {}\nID: {}\nRegion: {}\nMount point: {}",
+            fs.name, fs.id, fs.region.name, fs.mount_point
+        ))]))
+    }
+
+    #[tool(description = "Delete a filesystem. The filesystem must not be in use by any instance.")]
+    async fn delete_filesystem(
+        &self,
+        Parameters(params): Parameters<DeleteFilesystemParams>,
+    ) -> Result<CallToolResult, McpError> {
+        self.client
+            .delete_filesystem(&params.filesystem_id)
+            .await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        Ok(CallToolResult::success(vec![Content::text(format!(
+            "Filesystem {} deleted successfully.",
+            params.filesystem_id
+        ))]))
+    }
 }
 
 #[tool_handler]
@@ -209,8 +312,9 @@ impl ServerHandler for LambdaService {
         ServerInfo {
             instructions: Some(
                 "Lambda Labs GPU instance management. Use these tools to list available GPU types, \
-                 launch instances, check running instances, and terminate instances. \
-                 Requires LAMBDA_API_KEY environment variable to be set."
+                 launch instances, check running instances, terminate instances, and manage \
+                 persistent filesystems. Filesystems can be attached to instances at launch time \
+                 for persistent storage. Requires LAMBDA_API_KEY environment variable to be set."
                     .to_string(),
             ),
             capabilities: ServerCapabilities::builder().enable_tools().build(),

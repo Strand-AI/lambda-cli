@@ -1,3 +1,3 @@
 pub mod api;
 
-pub use api::{Instance, InstanceTypeData, LambdaClient, LambdaError, LaunchResult};
+pub use api::{Filesystem, Instance, InstanceTypeData, LambdaClient, LambdaError, LaunchResult};
