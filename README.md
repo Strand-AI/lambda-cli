@@ -1,132 +1,76 @@
 # Lambda CLI
 
-A command-line tool for interacting with the Lambda Labs cloud GPU API.
+[![CI](https://github.com/Strand-AI/lambda-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/Strand-AI/lambda-cli/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+A fast CLI for managing [Lambda Labs](https://lambdalabs.com/) cloud GPU instances.
 
 ## Installation
 
-### Homebrew (macOS/Linux)
+**Homebrew:**
+```bash
+brew install strand-ai/tap/lambda-cli
+```
+
+**From source:**
+```bash
+cargo install --git https://github.com/Strand-AI/lambda-cli
+```
+
+## Setup
+
+Get your API key from the [Lambda Labs dashboard](https://cloud.lambdalabs.com/api-keys) and export it:
 
 ```bash
-brew tap strand-ai/tap
-brew install lambda-cli
+export LAMBDA_API_KEY=<your-key>
 ```
 
-### From Source
-
-Requires Rust and Cargo. Install from [rust-lang.org](https://www.rust-lang.org/tools/install).
-
-```bash
-git clone https://github.com/Strand-AI/lambda-cli.git
-cd lambda-cli
-cargo install --path .
-```
-
-## Configuration
-
-Set your Lambda Labs API key as an environment variable:
-
-```bash
-export LAMBDA_API_KEY=your_api_key
-```
-
-Or create a `.env` file in the working directory:
-
-```
-LAMBDA_API_KEY=your_api_key
-```
-
-## Usage
-
-```bash
-lambda_cli [COMMAND]
-```
-
-### Commands
+## Commands
 
 | Command | Description |
 |---------|-------------|
-| `list` | List all GPU instance types with pricing and availability |
-| `start` | Launch a new GPU instance |
-| `stop` | Terminate a running instance |
-| `running` | List all running instances |
-| `find` | Poll for availability and auto-launch when found |
+| `list` | Show available GPU types with pricing and availability |
+| `running` | Show your running instances |
+| `start` | Launch a new instance |
+| `stop` | Terminate an instance |
+| `find` | Poll until a GPU type is available, then launch |
 
-### Start Instance
+## Usage
 
-```bash
-lambda_cli start --gpu <TYPE> --ssh <KEY> [--name <NAME>] [--region <REGION>]
-```
-
-Options:
-- `--gpu, -g` (required): Instance type (e.g., `gpu_1x_a100`)
-- `--ssh, -s` (required): SSH key name registered in Lambda Labs
-- `--name, -n` (optional): Name for the instance
-- `--region, -r` (optional): Region to launch in (auto-selects if not specified)
-
-Example:
-```bash
-lambda_cli start --gpu gpu_1x_a10 --ssh my-key --name "training-run-1"
-```
-
-### Stop Instance
-
-```bash
-lambda_cli stop --instance-id <ID>
-```
-
-### Find and Auto-Launch
-
-Polls for availability and automatically launches when capacity is found:
-
-```bash
-lambda_cli find --gpu <TYPE> --ssh <KEY> [--interval <SECONDS>] [--name <NAME>]
-```
-
-Options:
-- `--gpu, -g` (required): Instance type to find
-- `--ssh, -s` (required): SSH key name
-- `--interval` (default: 10): Polling interval in seconds
-- `--name, -n` (optional): Name for the instance when launched
-
-Example:
-```bash
-lambda_cli find --gpu gpu_8x_h100 --ssh my-key --interval 30 --name "h100-cluster"
-```
-
-## Examples
-
-Validate API key:
-```bash
-lambda_cli
-```
-
-List available instances:
+**List available GPUs:**
 ```bash
 lambda_cli list
 ```
 
-Start an instance with a name:
+**Start an instance:**
 ```bash
-lambda_cli start --gpu gpu_1x_a10 --ssh my-key --name "dev-server"
+lambda_cli start --gpu gpu_1x_a10 --ssh my-key --name "dev-box"
 ```
 
-Stop an instance:
+**Stop an instance:**
 ```bash
-lambda_cli stop --instance-id abc123-def456
+lambda_cli stop --instance-id <id>
 ```
 
-List running instances:
-```bash
-lambda_cli running
-```
-
-Find and auto-start when available:
+**Wait for availability and auto-launch:**
 ```bash
 lambda_cli find --gpu gpu_8x_h100 --ssh my-key --interval 30
 ```
 
-## License
+## Options
 
-MIT
+### start
+| Flag | Description |
+|------|-------------|
+| `-g, --gpu` | Instance type (required) |
+| `-s, --ssh` | SSH key name (required) |
+| `-n, --name` | Instance name |
+| `-r, --region` | Region (auto-selects if omitted) |
 
-# test
+### find
+| Flag | Description |
+|------|-------------|
+| `-g, --gpu` | Instance type to wait for (required) |
+| `-s, --ssh` | SSH key name (required) |
+| `--interval` | Poll interval in seconds (default: 10) |
+| `-n, --name` | Instance name when launched |
