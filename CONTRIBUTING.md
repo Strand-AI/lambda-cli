@@ -30,8 +30,9 @@ Releases are automated via PR labels. To create a release:
 When merged, CI will automatically:
 - Bump the version in `Cargo.toml`
 - Create a git tag
-- Build binaries for Linux and macOS
+- Build binaries for Linux, macOS, and Windows
 - Create a GitHub release
 - Update the Homebrew formula
+- Publish to npm (`@strand-ai/lambda-mcp`)
 
 No label = no release. PRs without release labels are regular code changes.
