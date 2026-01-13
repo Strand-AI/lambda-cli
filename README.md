@@ -128,3 +128,4 @@ lambda_cli find --gpu gpu_8x_h100 --ssh my-key --interval 30
 ## License
 
 MIT
+
