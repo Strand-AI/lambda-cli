@@ -40,15 +40,22 @@ fi
 
 echo "Releasing version $VERSION..."
 
-# Update version in Cargo.toml
-sed -i '' "s/^version = \".*\"/version = \"$VERSION\"/" Cargo.toml
+# Check current version in Cargo.toml
+CURRENT_VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
 
-# Update Cargo.lock
-cargo check --quiet
+if [[ "$CURRENT_VERSION" != "$VERSION" ]]; then
+    # Update version in Cargo.toml
+    sed -i '' "s/^version = \".*\"/version = \"$VERSION\"/" Cargo.toml
 
-# Commit version bump
-git add Cargo.toml Cargo.lock
-git commit -m "chore: bump version to $VERSION"
+    # Update Cargo.lock
+    cargo check --quiet
+
+    # Commit version bump
+    git add Cargo.toml Cargo.lock
+    git commit -m "chore: bump version to $VERSION"
+else
+    echo "Version already set to $VERSION in Cargo.toml"
+fi
 
 # Create and push tag
 git tag -a "v$VERSION" -m "Release v$VERSION"
