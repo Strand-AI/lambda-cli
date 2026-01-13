@@ -127,20 +127,32 @@ jobs:
             cp target/${{ matrix.target }}/release/lambda-mcp npm-pkg/bin/
             chmod +x npm-pkg/bin/lambda-mcp
           fi
-          cat > npm-pkg/package.json << EOF
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            cat > npm-pkg/package.json << EOF
           {
             "name": "@strand-ai/lambda-mcp-${{ matrix.npm_os }}-${{ matrix.npm_arch }}",
             "version": "${{ needs.release.outputs.version }}",
             "description": "Platform-specific binary for lambda-mcp (${{ matrix.npm_os }}-${{ matrix.npm_arch }})",
             "os": ["${{ matrix.npm_os }}"],
             "cpu": ["${{ matrix.npm_arch }}"],
-            "repository": {
-              "type": "git",
-              "url": "https://github.com/Strand-AI/lambda-cli"
-            },
+            "repository": { "type": "git", "url": "https://github.com/Strand-AI/lambda-cli" },
             "license": "MIT"
           }
           EOF
+          else
+            cat > npm-pkg/package.json << EOF
+          {
+            "name": "@strand-ai/lambda-mcp-${{ matrix.npm_os }}-${{ matrix.npm_arch }}",
+            "version": "${{ needs.release.outputs.version }}",
+            "description": "Platform-specific binary for lambda-mcp (${{ matrix.npm_os }}-${{ matrix.npm_arch }})",
+            "os": ["${{ matrix.npm_os }}"],
+            "cpu": ["${{ matrix.npm_arch }}"],
+            "repository": { "type": "git", "url": "https://github.com/Strand-AI/lambda-cli" },
+            "license": "MIT",
+            "scripts": { "postinstall": "chmod +x bin/lambda-mcp 2>/dev/null || true" }
+          }
+          EOF
+          fi
         shell: bash
 
       - name: Upload npm package artifact
