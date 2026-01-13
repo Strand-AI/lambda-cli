@@ -1,103 +1,164 @@
 # Lambda CLI
 
-Lambda CLI is a command-line tool for interacting with the Lambda Labs cloud GPU API.
+A command-line tool for interacting with the Lambda Labs cloud GPU API.
 
 ## Features
 
-- Validate the API key
-- List all available GPU instances
-- Start a GPU instance with the specified SSH key
-- Stop a specified GPU instance
-- List all running GPU instances
-- Continuously find and start a GPU instance when it becomes available
+- Validate API key
+- List all available GPU instance types with pricing and availability
+- Start GPU instances with optional naming and region selection
+- Stop/terminate running instances
+- List all running instances with status
+- Auto-find and launch instances when they become available
+- Rename instances (if supported by API)
 
 ## Installation
 
-To use Lambda CLI, you need to have Rust and Cargo installed. You can install Rust and Cargo by following the instructions [here](https://www.rust-lang.org/tools/install).
+Requires Rust and Cargo. Install from [rust-lang.org](https://www.rust-lang.org/tools/install).
 
-Clone the repository and navigate to the project directory:
-
-```
+```bash
 git clone https://github.com/cybrly/lambda_cli.git
 cd lambda_cli
 cargo build --release
 ```
 
+The binary will be at `./target/release/lambda_cli`.
 
-Usage
+## Configuration
 
-Before using Lambda CLI, set your Lambda API key as an environment variable:
+Set your Lambda Labs API key as an environment variable:
 
-```
+```bash
 export LAMBDA_API_KEY=your_api_key
 ```
 
-Run the CLI tool:
+Or create a `.env` file in the project directory:
 
 ```
-./target/release/lambda_cli [COMMAND]
+LAMBDA_API_KEY=your_api_key
 ```
 
-Commands
+## Usage
 
-- list: List all available GPU instances.
-- start --gpu <GPU_TYPE> --ssh <SSH_KEY>: Start a GPU instance with the specified SSH key.
-- stop --gpu <GPU_INSTANCE_ID>: Stop a specified GPU instance.
-- running: List all running GPU instances.
-- find --gpu <GPU_TYPE> [--ssh <SSH_KEY>] [--sec <SECONDS>]: Continuously find and start a GPU instance when it becomes available.
-
-Examples
-
-Validate the API key:
-
-```
-./target/release/lambda_cli
+```bash
+lambda_cli [COMMAND]
 ```
 
-List all available GPU instances:
+### Commands
 
+| Command | Description |
+|---------|-------------|
+| `list` | List all GPU instance types with pricing and availability |
+| `start` | Launch a new GPU instance |
+| `stop` | Terminate a running instance |
+| `running` | List all running instances |
+| `find` | Poll for availability and auto-launch when found |
+| `rename` | Rename an existing instance |
+
+### Start Instance
+
+```bash
+lambda_cli start --gpu <TYPE> --ssh <KEY> [--name <NAME>] [--region <REGION>]
 ```
-./target/release/lambda_cli list
+
+Options:
+- `--gpu, -g` (required): Instance type (e.g., `gpu_1x_a100`)
+- `--ssh, -s` (required): SSH key name registered in Lambda Labs
+- `--name, -n` (optional): Name for the instance
+- `--region, -r` (optional): Region to launch in (auto-selects if not specified)
+
+Example:
+```bash
+lambda_cli start --gpu gpu_1x_a10 --ssh my-key --name "training-run-1"
+```
+
+### Stop Instance
+
+```bash
+lambda_cli stop --instance-id <ID>
+```
+
+### Find and Auto-Launch
+
+Polls for availability and automatically launches when capacity is found:
+
+```bash
+lambda_cli find --gpu <TYPE> --ssh <KEY> [--interval <SECONDS>] [--name <NAME>]
+```
+
+Options:
+- `--gpu, -g` (required): Instance type to find
+- `--ssh, -s` (required): SSH key name
+- `--interval` (default: 10): Polling interval in seconds
+- `--name, -n` (optional): Name for the instance when launched
+
+Example:
+```bash
+lambda_cli find --gpu gpu_8x_h100 --ssh my-key --interval 30 --name "h100-cluster"
+```
+
+### Rename Instance
+
+```bash
+lambda_cli rename --instance-id <ID> --name <NEW_NAME>
+```
+
+Note: This may not be supported by the Lambda Labs API. If not, you'll get a clear error message suggesting to use `--name` at launch time instead.
+
+## Examples
+
+Validate API key:
+```bash
+lambda_cli
+```
+
+List available instances:
+```bash
+lambda_cli list
 ```
 
 ![](images/list.png)
 
-
-Start a GPU instance with the specified SSH key:
-
-```
-./target/release/lambda_cli start --gpu "gpu_1x_a10" --ssh "Chris"
+Start an instance with a name:
+```bash
+lambda_cli start --gpu gpu_1x_a10 --ssh my-key --name "dev-server"
 ```
 
 ![](images/start.png)
 
-
-Stop a specified GPU instance:
-
-```
-./target/release/lambda_cli stop --gpu "instance_id"
+Stop an instance:
+```bash
+lambda_cli stop --instance-id abc123-def456
 ```
 
 ![](images/stop.png)
 
-
-List all running GPU instances:
-
-```
-./target/release/lambda_cli running
+List running instances:
+```bash
+lambda_cli running
 ```
 
 ![](images/running.png)
 
-
-Continuously find and start a GPU instance when it becomes available:
-
-```
-./target/release/lambda_cli find --gpu "8x_h100" --ssh "SSH_KEY_NAME" --sec 30
+Find and auto-start when available:
+```bash
+lambda_cli find --gpu gpu_8x_h100 --ssh my-key --interval 30
 ```
 
 ![](images/find.png)
 
-![](images/find2.png)
+## Changes in v0.2.0
 
-![](images/find3.png)
+- **Proper error handling**: Replaced all `panic!`/`expect!` with graceful error messages
+- **HTTP timeouts**: 30s request timeout, 10s connect timeout (prevents hanging)
+- **Instance naming**: New `--name` flag for `start` and `find` commands
+- **Region selection**: New `--region` flag to specify launch region
+- **Rename command**: New `rename` command (API support pending)
+- **Better polling**: Instance startup now polls for ready state instead of fixed 2-min sleep
+- **Improved display**: Shows instance names, types, and regions in running list
+- **Input validation**: SSH key required for `find` command, region validation
+- **Updated dependencies**: crossterm 0.28, reqwest 0.12, etc.
+
+## License
+
+MIT
