@@ -180,3 +180,4 @@ cargo run --bin lambda -- list
 # Run MCP server
 cargo run --bin lambda-mcp
 ```
+
