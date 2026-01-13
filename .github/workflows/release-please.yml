@@ -68,16 +68,24 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            artifact_name: lambda_cli
-            asset_name: lambda_cli-x86_64-unknown-linux-gnu
+            asset_name: lambda-cli-x86_64-unknown-linux-gnu
+            npm_os: linux
+            npm_arch: x64
           - os: macos-latest
             target: x86_64-apple-darwin
-            artifact_name: lambda_cli
-            asset_name: lambda_cli-x86_64-apple-darwin
+            asset_name: lambda-cli-x86_64-apple-darwin
+            npm_os: darwin
+            npm_arch: x64
           - os: macos-latest
             target: aarch64-apple-darwin
-            artifact_name: lambda_cli
-            asset_name: lambda_cli-aarch64-apple-darwin
+            asset_name: lambda-cli-aarch64-apple-darwin
+            npm_os: darwin
+            npm_arch: arm64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            asset_name: lambda-cli-x86_64-pc-windows-msvc
+            npm_os: win32
+            npm_arch: x64
     steps:
       - uses: actions/checkout@v4
         with:
@@ -91,16 +99,54 @@ jobs:
       - name: Build release
         run: cargo build --release --target ${{ matrix.target }}
 
-      - name: Create tarball
+      - name: Create tarball (Unix)
+        if: matrix.os != 'windows-latest'
         run: |
           cd target/${{ matrix.target }}/release
-          tar -czvf ../../../${{ matrix.asset_name }}.tar.gz ${{ matrix.artifact_name }}
+          tar -czvf ../../../${{ matrix.asset_name }}.tar.gz lambda lambda-mcp
+
+      - name: Create tarball (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          cd target/${{ matrix.target }}/release
+          7z a ../../../${{ matrix.asset_name }}.zip lambda.exe lambda-mcp.exe
+        shell: bash
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.asset_name }}
-          path: ${{ matrix.asset_name }}.tar.gz
+          path: ${{ matrix.asset_name }}.${{ matrix.os == 'windows-latest' && 'zip' || 'tar.gz' }}
+
+      - name: Create npm platform package
+        run: |
+          mkdir -p npm-pkg/bin
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            cp target/${{ matrix.target }}/release/lambda-mcp.exe npm-pkg/bin/
+          else
+            cp target/${{ matrix.target }}/release/lambda-mcp npm-pkg/bin/
+          fi
+          cat > npm-pkg/package.json << EOF
+          {
+            "name": "@strand-ai/lambda-mcp-${{ matrix.npm_os }}-${{ matrix.npm_arch }}",
+            "version": "${{ needs.release.outputs.version }}",
+            "description": "Platform-specific binary for lambda-mcp (${{ matrix.npm_os }}-${{ matrix.npm_arch }})",
+            "os": ["${{ matrix.npm_os }}"],
+            "cpu": ["${{ matrix.npm_arch }}"],
+            "repository": {
+              "type": "git",
+              "url": "https://github.com/Strand-AI/lambda-cli"
+            },
+            "license": "MIT"
+          }
+          EOF
+        shell: bash
+
+      - name: Upload npm package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-lambda-mcp-${{ matrix.npm_os }}-${{ matrix.npm_arch }}
+          path: npm-pkg/
 
   publish:
     needs: [release, build]
@@ -115,7 +161,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ needs.release.outputs.version }}
-          files: artifacts/**/*.tar.gz
+          files: |
+            artifacts/**/*.tar.gz
+            artifacts/**/*.zip
           generate_release_notes: true
 
   update-homebrew:
@@ -140,7 +188,7 @@ jobs:
         run: |
           cat > homebrew-tap/Formula/lambda-cli.rb << 'EOF'
           class LambdaCli < Formula
-            desc "CLI tool for Lambda Labs cloud GPU API"
+            desc "CLI and MCP server for Lambda Labs cloud GPU instances"
             homepage "https://github.com/Strand-AI/lambda-cli"
             url "https://github.com/Strand-AI/lambda-cli/archive/refs/tags/v${{ needs.release.outputs.version }}.tar.gz"
             sha256 "${{ steps.sha256.outputs.sha256 }}"
@@ -150,11 +198,13 @@ jobs:
             depends_on "rust" => :build
 
             def install
-              system "cargo", "install", *std_cargo_args
+              system "cargo", "build", "--release"
+              bin.install "target/release/lambda"
+              bin.install "target/release/lambda-mcp"
             end
 
             test do
-              assert_match "lambda ${{ needs.release.outputs.version }}", shell_output("#{bin}/lambda_cli --version")
+              assert_match "lambda", shell_output("#{bin}/lambda --version")
             end
           end
           EOF
@@ -167,3 +217,49 @@ jobs:
           git add Formula/lambda-cli.rb
           git commit -m "lambda-cli: update to ${{ needs.release.outputs.version }}"
           git push
+
+  publish-npm:
+    needs: [release, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v${{ needs.release.outputs.version }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Download npm package artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: npm-lambda-mcp-*
+          path: npm-packages
+
+      - name: Publish platform packages
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          for pkg_dir in npm-packages/npm-lambda-mcp-*/; do
+            echo "Publishing $pkg_dir"
+            cd "$pkg_dir"
+            npm publish --access public
+            cd -
+          done
+
+      - name: Prepare and publish main package
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          cd npm/lambda-mcp
+          # Update version in package.json
+          sed -i 's/"version": "0.0.0"/"version": "${{ needs.release.outputs.version }}"/' package.json
+          # Update optional dependency versions
+          sed -i 's/"@strand-ai\/lambda-mcp-linux-x64": "0.0.0"/"@strand-ai\/lambda-mcp-linux-x64": "${{ needs.release.outputs.version }}"/' package.json
+          sed -i 's/"@strand-ai\/lambda-mcp-darwin-x64": "0.0.0"/"@strand-ai\/lambda-mcp-darwin-x64": "${{ needs.release.outputs.version }}"/' package.json
+          sed -i 's/"@strand-ai\/lambda-mcp-darwin-arm64": "0.0.0"/"@strand-ai\/lambda-mcp-darwin-arm64": "${{ needs.release.outputs.version }}"/' package.json
+          sed -i 's/"@strand-ai\/lambda-mcp-win32-x64": "0.0.0"/"@strand-ai\/lambda-mcp-win32-x64": "${{ needs.release.outputs.version }}"/' package.json
+          npm install
+          npm run build
+          npm publish --access public

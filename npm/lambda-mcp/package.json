@@ -1,0 +1,40 @@
+{
+  "name": "@strand-ai/lambda-mcp",
+  "version": "0.0.0",
+  "description": "MCP server for Lambda Labs cloud GPU instances",
+  "bin": "lib/index.js",
+  "main": "lib/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "lambda-labs",
+    "gpu",
+    "cloud",
+    "ai",
+    "claude"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Strand-AI/lambda-cli"
+  },
+  "homepage": "https://github.com/Strand-AI/lambda-cli#readme",
+  "bugs": {
+    "url": "https://github.com/Strand-AI/lambda-cli/issues"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "optionalDependencies": {
+    "@strand-ai/lambda-mcp-linux-x64": "0.0.0",
+    "@strand-ai/lambda-mcp-darwin-x64": "0.0.0",
+    "@strand-ai/lambda-mcp-darwin-arm64": "0.0.0",
+    "@strand-ai/lambda-mcp-win32-x64": "0.0.0"
+  }
+}
