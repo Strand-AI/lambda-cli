@@ -125,6 +125,7 @@ jobs:
             cp target/${{ matrix.target }}/release/lambda-mcp.exe npm-pkg/bin/
           else
             cp target/${{ matrix.target }}/release/lambda-mcp npm-pkg/bin/
+            chmod +x npm-pkg/bin/lambda-mcp
           fi
           cat > npm-pkg/package.json << EOF
           {
