@@ -3,6 +3,7 @@ use reqwest::header::AUTHORIZATION;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::Mutex;
 use std::time::Duration;
 use thiserror::Error;
 
@@ -106,10 +107,21 @@ pub struct Region {
     pub description: String,
 }
 
+/// Source for the API key - either a direct value or a command to execute
+#[derive(Debug, Clone)]
+enum ApiKeySource {
+    /// Direct API key value (already resolved)
+    Direct(String),
+    /// Command to execute to get the API key (lazy evaluation)
+    Command(String),
+}
+
 /// Lambda Labs API client
 pub struct LambdaClient {
     client: Client,
-    api_key: String,
+    api_key_source: ApiKeySource,
+    /// Cached API key (used for lazy evaluation)
+    cached_api_key: Mutex<Option<String>>,
 }
 
 impl LambdaClient {
@@ -120,7 +132,26 @@ impl LambdaClient {
             .build()
             .context("Failed to create HTTP client")?;
 
-        Ok(Self { client, api_key })
+        Ok(Self {
+            client,
+            api_key_source: ApiKeySource::Direct(api_key),
+            cached_api_key: Mutex::new(None),
+        })
+    }
+
+    /// Create a client with a lazy API key source (command executed on first use)
+    fn new_lazy(api_key_source: ApiKeySource) -> Result<Self> {
+        let client = Client::builder()
+            .timeout(Duration::from_secs(DEFAULT_TIMEOUT_SECS))
+            .connect_timeout(Duration::from_secs(10))
+            .build()
+            .context("Failed to create HTTP client")?;
+
+        Ok(Self {
+            client,
+            api_key_source,
+            cached_api_key: Mutex::new(None),
+        })
     }
 
     /// Create a client using environment variables for the API key.
@@ -128,18 +159,70 @@ impl LambdaClient {
     /// Checks in order:
     /// 1. `LAMBDA_API_KEY` - Direct API key
     /// 2. `LAMBDA_API_KEY_COMMAND` - Command to execute to get the API key (e.g., `op read op://vault/lambda/api-key`)
+    ///
+    /// By default, if `LAMBDA_API_KEY_COMMAND` is used, the command is executed immediately.
     pub fn from_env() -> Result<Self> {
-        let api_key = get_api_key_from_env()?;
-        Self::new(api_key)
+        Self::from_env_with_options(false)
+    }
+
+    /// Create a client using environment variables for the API key with options.
+    ///
+    /// If `lazy` is true and `LAMBDA_API_KEY_COMMAND` is used, the command execution
+    /// is deferred until the first API request.
+    pub fn from_env_with_options(lazy: bool) -> Result<Self> {
+        // First, try direct API key (always immediate)
+        if let Ok(key) = std::env::var("LAMBDA_API_KEY") {
+            if !key.is_empty() {
+                return Self::new(key);
+            }
+        }
+
+        // Then, try command-based retrieval
+        if let Ok(command) = std::env::var("LAMBDA_API_KEY_COMMAND") {
+            if !command.is_empty() {
+                if lazy {
+                    // Defer command execution until first API request
+                    return Self::new_lazy(ApiKeySource::Command(command));
+                } else {
+                    // Execute command immediately (default behavior)
+                    let key = execute_api_key_command(&command)?;
+                    return Self::new(key);
+                }
+            }
+        }
+
+        Err(LambdaError::ApiKeyNotSet.into())
+    }
+
+    /// Get the API key, executing the command if necessary (lazy evaluation)
+    fn get_api_key(&self) -> Result<String> {
+        match &self.api_key_source {
+            ApiKeySource::Direct(key) => Ok(key.clone()),
+            ApiKeySource::Command(cmd) => {
+                let mut cache = self
+                    .cached_api_key
+                    .lock()
+                    .map_err(|e| anyhow!("Failed to acquire lock: {}", e))?;
+
+                if let Some(key) = cache.as_ref() {
+                    return Ok(key.clone());
+                }
+
+                let key = execute_api_key_command(cmd)?;
+                *cache = Some(key.clone());
+                Ok(key)
+            }
+        }
     }
 
     /// Validate the API key by making a test request
     pub async fn validate_api_key(&self) -> Result<()> {
+        let api_key = self.get_api_key()?;
         let url = format!("{}/instances", API_BASE_URL);
         let response = self
             .client
             .get(&url)
-            .header(AUTHORIZATION, format!("Bearer {}", self.api_key))
+            .header(AUTHORIZATION, format!("Bearer {}", api_key))
             .send()
             .await
             .context("Failed to connect to Lambda Labs API")?;
@@ -159,11 +242,12 @@ impl LambdaClient {
 
     /// List all available instance types
     pub async fn list_instance_types(&self) -> Result<Vec<InstanceTypeData>> {
+        let api_key = self.get_api_key()?;
         let url = format!("{}/instance-types", API_BASE_URL);
         let response = self
             .client
             .get(&url)
-            .header(AUTHORIZATION, format!("Bearer {}", self.api_key))
+            .header(AUTHORIZATION, format!("Bearer {}", api_key))
             .send()
             .await
             .context("Failed to fetch instance types")?;
@@ -202,11 +286,12 @@ impl LambdaClient {
 
     /// Get instance type details (for checking availability)
     pub async fn get_instance_type(&self, gpu: &str) -> Result<Option<InstanceTypeResponse>> {
+        let api_key = self.get_api_key()?;
         let url = format!("{}/instance-types", API_BASE_URL);
         let response = self
             .client
             .get(&url)
-            .header(AUTHORIZATION, format!("Bearer {}", self.api_key))
+            .header(AUTHORIZATION, format!("Bearer {}", api_key))
             .send()
             .await
             .context("Failed to fetch instance types")?;
@@ -280,10 +365,11 @@ impl LambdaClient {
             payload["name"] = serde_json::Value::String(instance_name.to_string());
         }
 
+        let api_key = self.get_api_key()?;
         let response = self
             .client
             .post(&url)
-            .header(AUTHORIZATION, format!("Bearer {}", self.api_key))
+            .header(AUTHORIZATION, format!("Bearer {}", api_key))
             .json(&payload)
             .send()
             .await
@@ -314,6 +400,7 @@ impl LambdaClient {
 
     /// Terminate an instance
     pub async fn terminate_instance(&self, instance_id: &str) -> Result<()> {
+        let api_key = self.get_api_key()?;
         let url = format!("{}/instance-operations/terminate", API_BASE_URL);
         let payload = serde_json::json!({
             "instance_ids": [instance_id]
@@ -322,7 +409,7 @@ impl LambdaClient {
         let response = self
             .client
             .post(&url)
-            .header(AUTHORIZATION, format!("Bearer {}", self.api_key))
+            .header(AUTHORIZATION, format!("Bearer {}", api_key))
             .json(&payload)
             .send()
             .await
@@ -338,11 +425,12 @@ impl LambdaClient {
 
     /// List all running instances
     pub async fn list_running_instances(&self) -> Result<Vec<Instance>> {
+        let api_key = self.get_api_key()?;
         let url = format!("{}/instances", API_BASE_URL);
         let response = self
             .client
             .get(&url)
-            .header(AUTHORIZATION, format!("Bearer {}", self.api_key))
+            .header(AUTHORIZATION, format!("Bearer {}", api_key))
             .send()
             .await
             .context("Failed to fetch running instances")?;
@@ -362,11 +450,12 @@ impl LambdaClient {
 
     /// Get details for a specific instance
     pub async fn get_instance(&self, instance_id: &str) -> Result<Instance> {
+        let api_key = self.get_api_key()?;
         let url = format!("{}/instances/{}", API_BASE_URL, instance_id);
         let response = self
             .client
             .get(&url)
-            .header(AUTHORIZATION, format!("Bearer {}", self.api_key))
+            .header(AUTHORIZATION, format!("Bearer {}", api_key))
             .send()
             .await
             .context("Failed to fetch instance details")?;
@@ -416,29 +505,6 @@ impl LambdaClient {
 pub struct LaunchResult {
     pub instance_id: String,
     pub region: String,
-}
-
-/// Get API key from environment, supporting both direct key and command-based retrieval.
-///
-/// Checks in order:
-/// 1. `LAMBDA_API_KEY` - Direct API key value
-/// 2. `LAMBDA_API_KEY_COMMAND` - Shell command to execute (e.g., `op read op://vault/lambda/api-key`)
-fn get_api_key_from_env() -> Result<String> {
-    // First, try direct API key
-    if let Ok(key) = std::env::var("LAMBDA_API_KEY") {
-        if !key.is_empty() {
-            return Ok(key);
-        }
-    }
-
-    // Then, try command-based retrieval
-    if let Ok(command) = std::env::var("LAMBDA_API_KEY_COMMAND") {
-        if !command.is_empty() {
-            return execute_api_key_command(&command);
-        }
-    }
-
-    Err(LambdaError::ApiKeyNotSet.into())
 }
 
 /// Execute a shell command to retrieve the API key.

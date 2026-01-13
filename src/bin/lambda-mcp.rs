@@ -5,7 +5,7 @@ use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{CallToolResult, Content, ServerCapabilities, ServerInfo};
 use rmcp::schemars::JsonSchema;
 use rmcp::serde::Deserialize;
-use rmcp::{tool, tool_router, ErrorData as McpError, ServerHandler, ServiceExt};
+use rmcp::{tool, tool_handler, tool_router, ErrorData as McpError, ServerHandler, ServiceExt};
 use std::sync::Arc;
 
 /// Lambda Labs MCP Server
@@ -17,9 +17,9 @@ struct LambdaService {
 }
 
 impl LambdaService {
-    fn new() -> Result<Self> {
+    fn new(lazy: bool) -> Result<Self> {
         dotenv::dotenv().ok();
-        let client = LambdaClient::from_env()?;
+        let client = LambdaClient::from_env_with_options(lazy)?;
         Ok(Self {
             client: Arc::new(client),
             tool_router: Self::tool_router(),
@@ -203,6 +203,7 @@ impl LambdaService {
     }
 }
 
+#[tool_handler]
 impl ServerHandler for LambdaService {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
@@ -220,8 +221,13 @@ impl ServerHandler for LambdaService {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Parse command line arguments
+    let args: Vec<String> = std::env::args().collect();
+    // Lazy loading is the default for MCP servers; use --eager to load API key at startup
+    let lazy = !args.iter().any(|arg| arg == "--eager");
+
     // Initialize the service
-    let service = match LambdaService::new() {
+    let service = match LambdaService::new(lazy) {
         Ok(s) => s,
         Err(e) => {
             eprintln!("Failed to initialize Lambda service: {}", e);
