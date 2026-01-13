@@ -2,27 +2,24 @@
 
 A command-line tool for interacting with the Lambda Labs cloud GPU API.
 
-## Features
-
-- Validate API key
-- List all available GPU instance types with pricing and availability
-- Start GPU instances with optional naming and region selection
-- Stop/terminate running instances
-- List all running instances with status
-- Auto-find and launch instances when they become available
-- Rename instances (if supported by API)
-
 ## Installation
+
+### Homebrew (macOS/Linux)
+
+```bash
+brew tap strand-ai/tap
+brew install lambda-cli
+```
+
+### From Source
 
 Requires Rust and Cargo. Install from [rust-lang.org](https://www.rust-lang.org/tools/install).
 
 ```bash
-git clone https://github.com/cybrly/lambda_cli.git
-cd lambda_cli
-cargo build --release
+git clone https://github.com/Strand-AI/lambda-cli.git
+cd lambda-cli
+cargo install --path .
 ```
-
-The binary will be at `./target/release/lambda_cli`.
 
 ## Configuration
 
@@ -32,7 +29,7 @@ Set your Lambda Labs API key as an environment variable:
 export LAMBDA_API_KEY=your_api_key
 ```
 
-Or create a `.env` file in the project directory:
+Or create a `.env` file in the working directory:
 
 ```
 LAMBDA_API_KEY=your_api_key
@@ -53,7 +50,6 @@ lambda_cli [COMMAND]
 | `stop` | Terminate a running instance |
 | `running` | List all running instances |
 | `find` | Poll for availability and auto-launch when found |
-| `rename` | Rename an existing instance |
 
 ### Start Instance
 
@@ -97,14 +93,6 @@ Example:
 lambda_cli find --gpu gpu_8x_h100 --ssh my-key --interval 30 --name "h100-cluster"
 ```
 
-### Rename Instance
-
-```bash
-lambda_cli rename --instance-id <ID> --name <NEW_NAME>
-```
-
-Note: This may not be supported by the Lambda Labs API. If not, you'll get a clear error message suggesting to use `--name` at launch time instead.
-
 ## Examples
 
 Validate API key:
@@ -117,47 +105,25 @@ List available instances:
 lambda_cli list
 ```
 
-![](images/list.png)
-
 Start an instance with a name:
 ```bash
 lambda_cli start --gpu gpu_1x_a10 --ssh my-key --name "dev-server"
 ```
-
-![](images/start.png)
 
 Stop an instance:
 ```bash
 lambda_cli stop --instance-id abc123-def456
 ```
 
-![](images/stop.png)
-
 List running instances:
 ```bash
 lambda_cli running
 ```
 
-![](images/running.png)
-
 Find and auto-start when available:
 ```bash
 lambda_cli find --gpu gpu_8x_h100 --ssh my-key --interval 30
 ```
-
-![](images/find.png)
-
-## Changes in v0.2.0
-
-- **Proper error handling**: Replaced all `panic!`/`expect!` with graceful error messages
-- **HTTP timeouts**: 30s request timeout, 10s connect timeout (prevents hanging)
-- **Instance naming**: New `--name` flag for `start` and `find` commands
-- **Region selection**: New `--region` flag to specify launch region
-- **Rename command**: New `rename` command (API support pending)
-- **Better polling**: Instance startup now polls for ready state instead of fixed 2-min sleep
-- **Improved display**: Shows instance names, types, and regions in running list
-- **Input validation**: SSH key required for `find` command, region validation
-- **Updated dependencies**: crossterm 0.28, reqwest 0.12, etc.
 
 ## License
 

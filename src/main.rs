@@ -89,15 +89,6 @@ enum Commands {
         #[arg(short, long)]
         name: Option<String>,
     },
-    /// Rename an existing instance
-    Rename {
-        /// Instance ID to rename
-        #[arg(short = 'i', long)]
-        instance_id: String,
-        /// New name for the instance
-        #[arg(short, long)]
-        name: String,
-    },
 }
 
 #[derive(Deserialize, Debug)]
@@ -220,9 +211,6 @@ fn run() -> Result<()> {
             interval,
             name,
         }) => find_and_start_instance(&client, &api_key, gpu, ssh, *interval, name.as_deref()),
-        Some(Commands::Rename { instance_id, name }) => {
-            rename_instance(&client, &api_key, instance_id, name)
-        }
         None => validate_api_key(&client, &api_key),
     }
 }
@@ -692,50 +680,6 @@ fn get_instance_details(client: &Client, api_key: &str, instance_id: &str) -> Re
         .context("Failed to parse instance details")?;
 
     Ok(response.data)
-}
-
-fn rename_instance(client: &Client, api_key: &str, instance_id: &str, name: &str) -> Result<()> {
-    // Note: This endpoint may not exist in Lambda Labs API
-    // If it doesn't work, we'll get a clear error message
-    let url = format!("{}/instances/{}", API_BASE_URL, instance_id);
-    let payload = serde_json::json!({
-        "name": name
-    });
-
-    println!(
-        "Renaming instance {} to '{}'...",
-        instance_id.cyan(),
-        name.green()
-    );
-
-    let response = client
-        .patch(&url)
-        .header(AUTHORIZATION, format!("Bearer {}", api_key))
-        .json(&payload)
-        .send()
-        .context("Failed to send rename request")?;
-
-    if !response.status().is_success() {
-        let status = response.status();
-        let error_msg = parse_error_response(response);
-
-        if status.as_u16() == 404 || status.as_u16() == 405 {
-            return Err(anyhow!(
-                "Instance renaming is not supported by the Lambda Labs API. \
-                You can set a name when launching with: lambda start --gpu <type> --ssh <key> --name <name>"
-            ));
-        }
-
-        return Err(anyhow!("Failed to rename instance: {}", error_msg));
-    }
-
-    println!(
-        "{} Instance {} renamed to '{}'",
-        "Success!".green().bold(),
-        instance_id.cyan(),
-        name.green()
-    );
-    Ok(())
 }
 
 #[cfg(test)]
