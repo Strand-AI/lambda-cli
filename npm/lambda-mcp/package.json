@@ -5,6 +5,10 @@
   "bin": "lib/index.js",
   "main": "lib/index.js",
   "type": "commonjs",
+  "files": [
+    "lib",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc",
     "prepublishOnly": "npm run build"
