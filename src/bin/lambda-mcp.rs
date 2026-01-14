@@ -1,5 +1,6 @@
 use anyhow::Result;
 use lambda_cli::api::{Filesystem, Instance, InstanceTypeData, LambdaClient};
+use lambda_cli::notify::{InstanceReadyMessage, NotifyConfig, Notifier};
 use rmcp::handler::server::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{CallToolResult, Content, ServerCapabilities, ServerInfo};
@@ -7,11 +8,13 @@ use rmcp::schemars::JsonSchema;
 use rmcp::serde::Deserialize;
 use rmcp::{tool, tool_handler, tool_router, ErrorData as McpError, ServerHandler, ServiceExt};
 use std::sync::Arc;
+use std::time::Duration;
 
 /// Lambda Labs MCP Server
 #[derive(Clone)]
 struct LambdaService {
     client: Arc<LambdaClient>,
+    notify_config: Option<NotifyConfig>,
     #[allow(dead_code)]
     tool_router: ToolRouter<Self>,
 }
@@ -20,8 +23,10 @@ impl LambdaService {
     fn new(lazy: bool) -> Result<Self> {
         dotenv::dotenv().ok();
         let client = LambdaClient::from_env_with_options(lazy)?;
+        let notify_config = NotifyConfig::from_env();
         Ok(Self {
             client: Arc::new(client),
+            notify_config,
             tool_router: Self::tool_router(),
         })
     }
@@ -166,7 +171,7 @@ impl LambdaService {
         )]))
     }
 
-    #[tool(description = "Launch a new GPU instance. Returns instance ID and connection details. Optionally attach a filesystem (must be in the same region).")]
+    #[tool(description = "Launch a new GPU instance. Returns instance ID and connection details. Optionally attach a filesystem (must be in the same region). If notification env vars are configured, will auto-notify when instance is SSH-able.")]
     async fn start_instance(
         &self,
         Parameters(params): Parameters<StartInstanceParams>,
@@ -189,9 +194,28 @@ impl LambdaService {
             .map(|f| format!("\nFilesystem: {} (mounted at /lambda/nfs/{})", f, f))
             .unwrap_or_default();
 
+        // Spawn background task to notify when instance is ready
+        let notify_status = if let Some(ref config) = self.notify_config {
+            let channels = config.configured_channels().join(", ");
+            let client = Arc::clone(&self.client);
+            let notifier = Notifier::new(config.clone());
+            let instance_id = result.instance_id.clone();
+            let instance_name = params.name.clone();
+            let gpu_type = params.gpu.clone();
+            let region = result.region.clone();
+
+            tokio::spawn(async move {
+                poll_and_notify(client, notifier, instance_id, instance_name, gpu_type, region).await;
+            });
+
+            format!("\n\nNotifications enabled for: {}. You will be notified when the instance is SSH-able.", channels)
+        } else {
+            String::new()
+        };
+
         Ok(CallToolResult::success(vec![Content::text(format!(
-            "Instance launched successfully!\n\nInstance ID: {}\nRegion: {}{}\n\nNote: Instance may take a few minutes to become active. Use 'list_running_instances' to check status.",
-            result.instance_id, result.region, fs_info
+            "Instance launched successfully!\n\nInstance ID: {}\nRegion: {}{}\n\nNote: Instance may take a few minutes to become active. Use 'list_running_instances' to check status.{}",
+            result.instance_id, result.region, fs_info, notify_status
         ))]))
     }
 
@@ -319,6 +343,70 @@ impl ServerHandler for LambdaService {
             ),
             capabilities: ServerCapabilities::builder().enable_tools().build(),
             ..Default::default()
+        }
+    }
+}
+
+/// Background task to poll for instance readiness and send notifications
+async fn poll_and_notify(
+    client: Arc<LambdaClient>,
+    notifier: Notifier,
+    instance_id: String,
+    instance_name: Option<String>,
+    gpu_type: String,
+    region: String,
+) {
+    let max_wait = Duration::from_secs(600); // 10 minutes max
+    let poll_interval = Duration::from_secs(10);
+    let start = std::time::Instant::now();
+
+    loop {
+        if start.elapsed() > max_wait {
+            eprintln!(
+                "[notify] Timeout waiting for instance {} to become active",
+                instance_id
+            );
+            return;
+        }
+
+        tokio::time::sleep(poll_interval).await;
+
+        match client.get_instance(&instance_id).await {
+            Ok(instance) => {
+                let status = instance.status.as_deref().unwrap_or("unknown");
+
+                if status == "active" {
+                    if let Some(ip) = instance.ip {
+                        let msg = InstanceReadyMessage {
+                            instance_id: instance_id.clone(),
+                            instance_name,
+                            ip,
+                            gpu_type,
+                            region,
+                        };
+
+                        let results = notifier.send_all(&msg).await;
+                        for (channel, result) in results {
+                            match result {
+                                Ok(()) => eprintln!("[notify] {} notification sent for {}", channel, instance_id),
+                                Err(e) => eprintln!("[notify] {} notification failed: {}", channel, e),
+                            }
+                        }
+                    }
+                    return;
+                } else if status == "terminated" || status == "unhealthy" {
+                    eprintln!(
+                        "[notify] Instance {} entered {} state, stopping notifications",
+                        instance_id, status
+                    );
+                    return;
+                }
+                // Still booting, continue polling
+            }
+            Err(e) => {
+                eprintln!("[notify] Error checking instance {}: {}", instance_id, e);
+                // Continue polling on transient errors
+            }
         }
     }
 }

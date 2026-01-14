@@ -44,6 +44,36 @@ export LAMBDA_API_KEY_COMMAND="op read op://Personal/Lambda/api-key"
 
 The command is executed at startup and its output is used as the API key. This works with any secret manager.
 
+## Notifications (Optional)
+
+Get notified on Slack, Discord, or Telegram when your instance is ready and SSH-able.
+
+### Configuration
+
+Set one or more of these environment variables:
+
+```bash
+# Slack (incoming webhook)
+export LAMBDA_NOTIFY_SLACK_WEBHOOK="https://hooks.slack.com/services/T00/B00/XXX"
+
+# Discord (webhook URL)
+export LAMBDA_NOTIFY_DISCORD_WEBHOOK="https://discord.com/api/webhooks/123/abc"
+
+# Telegram (bot token + chat ID)
+export LAMBDA_NOTIFY_TELEGRAM_BOT_TOKEN="123456:ABC-DEF..."
+export LAMBDA_NOTIFY_TELEGRAM_CHAT_ID="123456789"
+```
+
+### Setup Guides
+
+**Slack:** Create an [Incoming Webhook](https://api.slack.com/messaging/webhooks) in your workspace.
+
+**Discord:** In channel settings → Integrations → Webhooks → New Webhook → Copy Webhook URL.
+
+**Telegram:**
+1. Message [@BotFather](https://t.me/botfather) → `/newbot` → copy the token
+2. Message your bot, then visit `https://api.telegram.org/bot<TOKEN>/getUpdates` to find your chat ID
+
 ---
 
 ## CLI Usage
@@ -89,6 +119,8 @@ lambda find --gpu gpu_8x_h100 --ssh my-key --interval 30
 | `-s, --ssh` | SSH key name (required) |
 | `-n, --name` | Instance name |
 | `-r, --region` | Region (auto-selects if omitted) |
+| `-f, --filesystem` | Filesystem to attach (must be in same region) |
+| `--no-notify` | Disable notifications even if env vars are set |
 
 #### find
 | Flag | Description |
@@ -97,6 +129,13 @@ lambda find --gpu gpu_8x_h100 --ssh my-key --interval 30
 | `-s, --ssh` | SSH key name (required) |
 | `--interval` | Poll interval in seconds (default: 10) |
 | `-n, --name` | Instance name when launched |
+| `-f, --filesystem` | Filesystem to attach when launched |
+| `--no-notify` | Disable notifications even if env vars are set |
+
+Notifications are **automatic** when env vars are configured. Use `--no-notify` to disable:
+```bash
+lambda start --gpu gpu_1x_a10 --ssh my-key --no-notify
+```
 
 ---
 
@@ -135,10 +174,14 @@ npx @strand-ai/lambda-mcp --eager
 | Tool | Description |
 |------|-------------|
 | `list_gpu_types` | List all available GPU instance types with pricing, specs, and current availability |
-| `start_instance` | Launch a new GPU instance |
+| `start_instance` | Launch a new GPU instance (auto-notifies if configured) |
 | `stop_instance` | Terminate a running instance |
 | `list_running_instances` | Show all running instances with status and connection details |
 | `check_availability` | Check if a specific GPU type is available |
+
+### Auto-Notifications
+
+When notification environment variables are configured, the MCP server automatically sends notifications when instances become SSH-able. No additional flags needed—just set the `LAMBDA_NOTIFY_*` env vars and launch instances as usual.
 
 ### Claude Code Setup
 
