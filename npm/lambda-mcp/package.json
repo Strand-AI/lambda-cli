@@ -1,7 +1,7 @@
 {
   "name": "@strand-ai/lambda-mcp",
   "version": "0.0.0",
-  "description": "MCP server for Lambda Labs cloud GPU instances",
+  "description": "Unofficial MCP server for Lambda cloud GPU instances",
   "bin": "lib/index.js",
   "main": "lib/index.js",
   "type": "commonjs",

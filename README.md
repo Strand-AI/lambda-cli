@@ -1,5 +1,7 @@
 # Lambda CLI
 
+> **⚠️ UNOFFICIAL PROJECT** — This is a community-built tool, not affiliated with or endorsed by Lambda.
+
 [![CI](https://github.com/Strand-AI/lambda-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/Strand-AI/lambda-cli/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![npm](https://img.shields.io/npm/v/@strand-ai/lambda-mcp)](https://www.npmjs.com/package/@strand-ai/lambda-mcp)
@@ -7,7 +9,7 @@
 [![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_Server-0098FF?logo=visualstudiocode&logoColor=white)](https://vscode.dev/redirect/mcp/install?name=lambda-labs&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40strand-ai%2Flambda-mcp%22%5D%7D)
 [![Install in Cursor](https://img.shields.io/badge/Cursor-Install_Server-000000?logo=cursor&logoColor=white)](cursor://anysphere.cursor-deeplink/mcp/install?name=lambda-labs&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40strand-ai%2Flambda-mcp%22%5D%7D)
 
-A fast CLI and MCP server for managing [Lambda Labs](https://lambdalabs.com/) cloud GPU instances.
+A fast CLI and MCP server for managing [Lambda](https://lambdalabs.com/) cloud GPU instances.
 
 **Two ways to use it:**
 - **CLI** (`lambda`) - Direct terminal commands for managing GPU instances
@@ -30,7 +32,7 @@ Download from [GitHub Releases](https://github.com/Strand-AI/lambda-cli/releases
 
 ## Authentication
 
-Get your API key from the [Lambda Labs dashboard](https://cloud.lambdalabs.com/api-keys).
+Get your API key from the [Lambda dashboard](https://cloud.lambdalabs.com/api-keys).
 
 ### Option 1: Environment Variable
 ```bash
@@ -141,7 +143,7 @@ lambda start --gpu gpu_1x_a10 --ssh my-key --no-notify
 
 ## MCP Server
 
-The `lambda-mcp` binary is an [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server that lets AI assistants manage your Lambda Labs infrastructure.
+The `lambda-mcp` binary is an [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server that lets AI assistants manage your Lambda infrastructure.
 
 ### Quick Start with npx
 
@@ -200,7 +202,7 @@ Then restart Claude Code.
 
 Once configured, you can ask Claude things like:
 
-- "What GPUs are currently available on Lambda Labs?"
+- "What GPUs are currently available on Lambda?"
 - "Launch an H100 instance with my ssh key 'macbook'"
 - "Show me my running instances"
 - "Check if any A100s are available"

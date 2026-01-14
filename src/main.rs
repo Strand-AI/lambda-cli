@@ -8,17 +8,17 @@ use crossterm::{
     terminal::{Clear, ClearType},
 };
 use lambda_cli::api::{LambdaClient, LambdaError};
-use lambda_cli::notify::{InstanceReadyMessage, NotifyConfig, Notifier};
+use lambda_cli::notify::{InstanceReadyMessage, Notifier, NotifyConfig};
 use prettytable::{row, Table};
 use std::io::{stdout, Write};
 use std::time::{Duration, Instant};
 use tokio::runtime::Runtime;
 
-/// A command-line tool for Lambda Labs cloud GPU API
+/// A command-line tool for Lambda cloud GPU API
 #[derive(Parser)]
 #[command(name = "lambda")]
 #[command(version = "0.2.0")]
-#[command(about = "A command-line tool for Lambda Labs cloud GPU API", long_about = None)]
+#[command(about = "A command-line tool for Lambda cloud GPU API", long_about = None)]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
@@ -243,9 +243,8 @@ fn start_instance(
         fs_info
     );
 
-    let result = rt.block_on(client.launch_instance_with_filesystem(
-        gpu, ssh, name, region, filesystem,
-    ))?;
+    let result =
+        rt.block_on(client.launch_instance_with_filesystem(gpu, ssh, name, region, filesystem))?;
 
     println!(
         "{} Instance {} launched in region {}",
@@ -304,11 +303,9 @@ fn start_instance(
                             let results = rt.block_on(notifier.send_all(&msg));
                             for (channel, result) in results {
                                 match result {
-                                    Ok(()) => println!(
-                                        "  {} {} notification sent",
-                                        "✓".green(),
-                                        channel
-                                    ),
+                                    Ok(()) => {
+                                        println!("  {} {} notification sent", "✓".green(), channel)
+                                    }
                                     Err(e) => println!(
                                         "  {} {} notification failed: {}",
                                         "✗".red(),

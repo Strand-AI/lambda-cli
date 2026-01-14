@@ -1,6 +1,6 @@
 use anyhow::Result;
 use lambda_cli::api::{Filesystem, Instance, InstanceTypeData, LambdaClient};
-use lambda_cli::notify::{InstanceReadyMessage, NotifyConfig, Notifier};
+use lambda_cli::notify::{InstanceReadyMessage, Notifier, NotifyConfig};
 use rmcp::handler::server::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{CallToolResult, Content, ServerCapabilities, ServerInfo};
@@ -10,7 +10,7 @@ use rmcp::{tool, tool_handler, tool_router, ErrorData as McpError, ServerHandler
 use std::sync::Arc;
 use std::time::Duration;
 
-/// Lambda Labs MCP Server
+/// Lambda MCP Server
 #[derive(Clone)]
 struct LambdaService {
     client: Arc<LambdaClient>,
@@ -171,7 +171,9 @@ impl LambdaService {
         )]))
     }
 
-    #[tool(description = "Launch a new GPU instance. Returns instance ID and connection details. Optionally attach a filesystem (must be in the same region). If notification env vars are configured, will auto-notify when instance is SSH-able.")]
+    #[tool(
+        description = "Launch a new GPU instance. Returns instance ID and connection details. Optionally attach a filesystem (must be in the same region). If notification env vars are configured, will auto-notify when instance is SSH-able."
+    )]
     async fn start_instance(
         &self,
         Parameters(params): Parameters<StartInstanceParams>,
@@ -205,7 +207,15 @@ impl LambdaService {
             let region = result.region.clone();
 
             tokio::spawn(async move {
-                poll_and_notify(client, notifier, instance_id, instance_name, gpu_type, region).await;
+                poll_and_notify(
+                    client,
+                    notifier,
+                    instance_id,
+                    instance_name,
+                    gpu_type,
+                    region,
+                )
+                .await;
             });
 
             format!("\n\nNotifications enabled for: {}. You will be notified when the instance is SSH-able.", channels)
@@ -335,7 +345,7 @@ impl ServerHandler for LambdaService {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
             instructions: Some(
-                "Lambda Labs GPU instance management. Use these tools to list available GPU types, \
+                "Lambda GPU instance management. Use these tools to list available GPU types, \
                  launch instances, check running instances, terminate instances, and manage \
                  persistent filesystems. Filesystems can be attached to instances at launch time \
                  for persistent storage. Requires LAMBDA_API_KEY environment variable to be set."
@@ -388,8 +398,13 @@ async fn poll_and_notify(
                         let results = notifier.send_all(&msg).await;
                         for (channel, result) in results {
                             match result {
-                                Ok(()) => eprintln!("[notify] {} notification sent for {}", channel, instance_id),
-                                Err(e) => eprintln!("[notify] {} notification failed: {}", channel, e),
+                                Ok(()) => eprintln!(
+                                    "[notify] {} notification sent for {}",
+                                    channel, instance_id
+                                ),
+                                Err(e) => {
+                                    eprintln!("[notify] {} notification failed: {}", channel, e)
+                                }
                             }
                         }
                     }
