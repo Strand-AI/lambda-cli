@@ -10,55 +10,28 @@ permissions:
 
 jobs:
   release:
-    if: github.event.pull_request.merged == true && (contains(github.event.pull_request.labels.*.name, 'release:major') || contains(github.event.pull_request.labels.*.name, 'release:minor') || contains(github.event.pull_request.labels.*.name, 'release:patch'))
+    # Triggers when PR with 'release' label is merged
+    # IMPORTANT: PR author must update version in Cargo.toml before merging
+    if: github.event.pull_request.merged == true && contains(github.event.pull_request.labels.*.name, 'release')
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ steps.new.outputs.version }}
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Determine version bump
-        id: bump
-        run: |
-          if ${{ contains(github.event.pull_request.labels.*.name, 'release:major') }}; then
-            echo "type=major" >> $GITHUB_OUTPUT
-          elif ${{ contains(github.event.pull_request.labels.*.name, 'release:minor') }}; then
-            echo "type=minor" >> $GITHUB_OUTPUT
-          else
-            echo "type=patch" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Get current version
-        id: current
+      - name: Get version from Cargo.toml
+        id: version
         run: |
           VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Releasing version: $VERSION"
 
-      - name: Calculate new version
-        id: new
-        run: |
-          IFS='.' read -r major minor patch <<< "${{ steps.current.outputs.version }}"
-          case "${{ steps.bump.outputs.type }}" in
-            major) echo "version=$((major + 1)).0.0" >> $GITHUB_OUTPUT ;;
-            minor) echo "version=${major}.$((minor + 1)).0" >> $GITHUB_OUTPUT ;;
-            patch) echo "version=${major}.${minor}.$((patch + 1))" >> $GITHUB_OUTPUT ;;
-          esac
-
-      - name: Update version in Cargo.toml
-        run: |
-          sed -i 's/^version = ".*"/version = "${{ steps.new.outputs.version }}"/' Cargo.toml
-
-      - name: Commit and tag
+      - name: Create and push tag
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add Cargo.toml
-          git commit -m "chore: release v${{ steps.new.outputs.version }}"
-          git tag -a "v${{ steps.new.outputs.version }}" -m "Release v${{ steps.new.outputs.version }}"
-          git push origin main
-          git push origin "v${{ steps.new.outputs.version }}"
+          git tag -a "v${{ steps.version.outputs.version }}" -m "Release v${{ steps.version.outputs.version }}"
+          git push origin "v${{ steps.version.outputs.version }}"
 
   build:
     needs: release

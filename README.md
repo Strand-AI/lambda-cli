@@ -227,3 +227,15 @@ cargo run --bin lambda -- list
 cargo run --bin lambda-mcp
 ```
 
+## Releasing
+
+To create a release:
+
+1. Update the version in `Cargo.toml`
+2. Create a PR with the `release` label
+3. Merge the PR — this automatically:
+   - Creates a git tag
+   - Builds binaries for all platforms
+   - Publishes to npm
+   - Updates the Homebrew formula
+
