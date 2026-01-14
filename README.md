@@ -1,4 +1,4 @@
-# Lambda CLI
+# Unofficial Lambda CLI
 
 > **⚠️ UNOFFICIAL PROJECT** — This is a community-built tool, not affiliated with or endorsed by Lambda.
 
