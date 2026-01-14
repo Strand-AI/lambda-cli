@@ -385,38 +385,39 @@ async fn poll_and_notify(
             Ok(instance) => {
                 let status = instance.status.as_deref().unwrap_or("unknown");
 
-                if status == "active" {
-                    if let Some(ip) = instance.ip {
-                        let msg = InstanceReadyMessage {
-                            instance_id: instance_id.clone(),
-                            instance_name,
-                            ip,
-                            gpu_type,
-                            region,
-                        };
-
-                        let results = notifier.send_all(&msg).await;
-                        for (channel, result) in results {
-                            match result {
-                                Ok(()) => eprintln!(
-                                    "[notify] {} notification sent for {}",
-                                    channel, instance_id
-                                ),
-                                Err(e) => {
-                                    eprintln!("[notify] {} notification failed: {}", channel, e)
-                                }
-                            }
-                        }
-                    }
-                    return;
-                } else if status == "terminated" || status == "unhealthy" {
+                if status == "terminated" || status == "unhealthy" {
                     eprintln!(
                         "[notify] Instance {} entered {} state, stopping notifications",
                         instance_id, status
                     );
                     return;
                 }
-                // Still booting, continue polling
+
+                // Notify when IP is available (don't wait for "active" status)
+                if let Some(ip) = instance.ip {
+                    let msg = InstanceReadyMessage {
+                        instance_id: instance_id.clone(),
+                        instance_name,
+                        ip,
+                        gpu_type,
+                        region,
+                    };
+
+                    let results = notifier.send_all(&msg).await;
+                    for (channel, result) in results {
+                        match result {
+                            Ok(()) => eprintln!(
+                                "[notify] {} notification sent for {}",
+                                channel, instance_id
+                            ),
+                            Err(e) => {
+                                eprintln!("[notify] {} notification failed: {}", channel, e)
+                            }
+                        }
+                    }
+                    return;
+                }
+                // No IP yet, continue polling
             }
             Err(e) => {
                 eprintln!("[notify] Error checking instance {}: {}", instance_id, e);

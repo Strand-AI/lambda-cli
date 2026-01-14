@@ -281,46 +281,40 @@ fn start_instance(
                 );
                 stdout().flush().ok();
 
-                if status == "active" {
+                // Ready when IP is available (don't wait for "active" status)
+                if let Some(ref ip) = instance.ip {
                     println!();
-                    if let Some(ref ip) = instance.ip {
-                        println!(
-                            "{} Instance is active! SSH: {}",
-                            "Ready!".green().bold(),
-                            format!("ssh ubuntu@{}", ip).cyan()
-                        );
+                    println!(
+                        "{} Instance is ready! SSH: {}",
+                        "Ready!".green().bold(),
+                        format!("ssh ubuntu@{}", ip).cyan()
+                    );
 
-                        // Send notification if configured
-                        if let Some(ref notifier) = notifier {
-                            let msg = InstanceReadyMessage {
-                                instance_id: result.instance_id.clone(),
-                                instance_name: name.map(String::from),
-                                ip: ip.clone(),
-                                gpu_type: gpu.to_string(),
-                                region: result.region.clone(),
-                            };
+                    // Send notification if configured
+                    if let Some(ref notifier) = notifier {
+                        let msg = InstanceReadyMessage {
+                            instance_id: result.instance_id.clone(),
+                            instance_name: name.map(String::from),
+                            ip: ip.clone(),
+                            gpu_type: gpu.to_string(),
+                            region: result.region.clone(),
+                        };
 
-                            println!("{} Sending notifications...", "Info:".blue());
-                            let results = rt.block_on(notifier.send_all(&msg));
-                            for (channel, result) in results {
-                                match result {
-                                    Ok(()) => {
-                                        println!("  {} {} notification sent", "✓".green(), channel)
-                                    }
-                                    Err(e) => println!(
-                                        "  {} {} notification failed: {}",
-                                        "✗".red(),
-                                        channel,
-                                        e
-                                    ),
+                        println!("{} Sending notifications...", "Info:".blue());
+                        let results = rt.block_on(notifier.send_all(&msg));
+                        for (channel, result) in results {
+                            match result {
+                                Ok(()) => {
+                                    println!("  {} {} notification sent", "✓".green(), channel)
                                 }
+                                Err(e) => println!(
+                                    "  {} {} notification failed: {}",
+                                    "✗".red(),
+                                    channel,
+                                    e
+                                ),
                             }
                         }
-                    } else {
-                        println!(
-                            "{} Instance is active but IP not yet assigned",
-                            "Ready!".green().bold()
-                        );
                     }
                     break;
                 } else if status == "terminated" || status == "unhealthy" {
