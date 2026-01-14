@@ -232,8 +232,7 @@ cargo run --bin lambda-mcp
 To create a release:
 
 1. Update the version in `Cargo.toml`
-2. Create a PR with the `release` label
-3. Merge the PR — this automatically:
+2. Merge to main — this automatically:
    - Creates a git tag
    - Builds binaries for all platforms
    - Publishes to npm
