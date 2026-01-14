@@ -24,6 +24,17 @@ impl LambdaService {
         dotenv::dotenv().ok();
         let client = LambdaClient::from_env_with_options(lazy)?;
         let notify_config = NotifyConfig::from_env();
+
+        // Debug: log notification config status
+        if let Some(ref config) = notify_config {
+            eprintln!(
+                "[lambda-mcp] Notifications configured for: {}",
+                config.configured_channels().join(", ")
+            );
+        } else {
+            eprintln!("[lambda-mcp] No notification channels configured");
+        }
+
         Ok(Self {
             client: Arc::new(client),
             notify_config,
