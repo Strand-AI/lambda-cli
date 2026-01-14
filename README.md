@@ -7,8 +7,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![npm](https://img.shields.io/npm/v/@strand-ai/lambda-mcp)](https://www.npmjs.com/package/@strand-ai/lambda-mcp)
 [![MCP](https://img.shields.io/badge/MCP-compatible-8A2BE2)](https://modelcontextprotocol.io)
-[![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_Server-0098FF?logo=visualstudiocode&logoColor=white)](https://vscode.dev/redirect/mcp/install?name=lambda-labs&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40strand-ai%2Flambda-mcp%22%5D%7D)
-[![Install in Cursor](https://img.shields.io/badge/Cursor-Install_Server-000000?logo=cursor&logoColor=white)](cursor://anysphere.cursor-deeplink/mcp/install?name=lambda-labs&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40strand-ai%2Flambda-mcp%22%5D%7D)
+[![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_Server-0098FF?logo=visualstudiocode&logoColor=white)](https://vscode.dev/redirect/mcp/install?name=lambda&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40strand-ai%2Flambda-mcp%22%5D%7D)
+[![Install in Cursor](https://img.shields.io/badge/Cursor-Install_Server-000000?logo=cursor&logoColor=white)](cursor://anysphere.cursor-deeplink/mcp/install?name=lambda&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40strand-ai%2Flambda-mcp%22%5D%7D)
 
 A fast CLI and MCP server for managing [Lambda](https://lambda.ai/) cloud GPU instances.
 
@@ -189,12 +189,12 @@ When notification environment variables are configured, the MCP server automatic
 ### Claude Code Setup
 
 ```bash
-claude mcp add lambda-labs -s user -e LAMBDA_API_KEY=your-api-key -- npx -y @strand-ai/lambda-mcp
+claude mcp add lambda -s user -e LAMBDA_API_KEY=your-api-key -- npx -y @strand-ai/lambda-mcp
 ```
 
-**With 1Password:**
+**With 1Password CLI:**
 ```bash
-claude mcp add lambda-labs -s user -e LAMBDA_API_KEY_COMMAND="op read op://Personal/Lambda/api-key" -- npx -y @strand-ai/lambda-mcp
+claude mcp add lambda -s user -e LAMBDA_API_KEY_COMMAND="op read op://Personal/Lambda/api-key" -- npx -y @strand-ai/lambda-mcp
 ```
 
 Then restart Claude Code.

@@ -1,40 +1,70 @@
 name: Release
 
 on:
-  pull_request:
-    types: [closed]
+  push:
     branches: [main]
 
 permissions:
   contents: write
 
 jobs:
-  release:
-    # Triggers when PR with 'release' label is merged
-    # IMPORTANT: PR author must update version in Cargo.toml before merging
-    if: github.event.pull_request.merged == true && contains(github.event.pull_request.labels.*.name, 'release')
+  check-version:
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ steps.version.outputs.version }}
+      should_release: ${{ steps.check.outputs.should_release }}
+      version: ${{ steps.check.outputs.version }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Get version from Cargo.toml
-        id: version
+      - name: Check if version changed
+        id: check
         run: |
           VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Releasing version: $VERSION"
+
+          # Get latest tag
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          LATEST_VERSION=${LATEST_TAG#v}
+
+          echo "Current version: $VERSION"
+          echo "Latest tag: $LATEST_TAG (version: $LATEST_VERSION)"
+
+          if [ "$VERSION" != "$LATEST_VERSION" ]; then
+            # Verify this is a newer version (not older)
+            printf '%s\n%s\n' "$LATEST_VERSION" "$VERSION" | sort -V -C && IS_NEWER=false || IS_NEWER=true
+            if [ "$IS_NEWER" = "true" ] || [ "$LATEST_VERSION" = "0.0.0" ]; then
+              echo "should_release=true" >> $GITHUB_OUTPUT
+              echo "New version detected, will release $VERSION"
+            else
+              echo "should_release=false" >> $GITHUB_OUTPUT
+              echo "Version $VERSION is not newer than $LATEST_VERSION, skipping release"
+            fi
+          else
+            echo "should_release=false" >> $GITHUB_OUTPUT
+            echo "Version unchanged, skipping release"
+          fi
+
+  release:
+    needs: check-version
+    if: needs.check-version.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ needs.check-version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
 
       - name: Create and push tag
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -a "v${{ steps.version.outputs.version }}" -m "Release v${{ steps.version.outputs.version }}"
-          git push origin "v${{ steps.version.outputs.version }}"
+          git tag -a "v${{ needs.check-version.outputs.version }}" -m "Release v${{ needs.check-version.outputs.version }}"
+          git push origin "v${{ needs.check-version.outputs.version }}"
 
   build:
-    needs: release
+    needs: [check-version, release]
+    if: needs.check-version.outputs.should_release == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -62,7 +92,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: v${{ needs.release.outputs.version }}
+          ref: v${{ needs.check-version.outputs.version }}
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -104,7 +134,7 @@ jobs:
             cat > npm-pkg/package.json << EOF
           {
             "name": "@strand-ai/lambda-mcp-${{ matrix.npm_os }}-${{ matrix.npm_arch }}",
-            "version": "${{ needs.release.outputs.version }}",
+            "version": "${{ needs.check-version.outputs.version }}",
             "description": "Platform-specific binary for lambda-mcp (${{ matrix.npm_os }}-${{ matrix.npm_arch }})",
             "os": ["${{ matrix.npm_os }}"],
             "cpu": ["${{ matrix.npm_arch }}"],
@@ -116,7 +146,7 @@ jobs:
             cat > npm-pkg/package.json << EOF
           {
             "name": "@strand-ai/lambda-mcp-${{ matrix.npm_os }}-${{ matrix.npm_arch }}",
-            "version": "${{ needs.release.outputs.version }}",
+            "version": "${{ needs.check-version.outputs.version }}",
             "description": "Platform-specific binary for lambda-mcp (${{ matrix.npm_os }}-${{ matrix.npm_arch }})",
             "os": ["${{ matrix.npm_os }}"],
             "cpu": ["${{ matrix.npm_arch }}"],
@@ -135,7 +165,7 @@ jobs:
           path: npm-pkg/
 
   publish:
-    needs: [release, build]
+    needs: [check-version, release, build]
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts
@@ -146,20 +176,20 @@ jobs:
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ needs.release.outputs.version }}
+          tag_name: v${{ needs.check-version.outputs.version }}
           files: |
             artifacts/**/*.tar.gz
             artifacts/**/*.zip
           generate_release_notes: true
 
   update-homebrew:
-    needs: [release, publish]
+    needs: [check-version, release, publish]
     runs-on: ubuntu-latest
     steps:
       - name: Compute SHA256
         id: sha256
         run: |
-          TARBALL_URL="https://github.com/${{ github.repository }}/archive/refs/tags/v${{ needs.release.outputs.version }}.tar.gz"
+          TARBALL_URL="https://github.com/${{ github.repository }}/archive/refs/tags/v${{ needs.check-version.outputs.version }}.tar.gz"
           SHA256=$(curl -sL "$TARBALL_URL" | sha256sum | cut -d' ' -f1)
           echo "sha256=$SHA256" >> $GITHUB_OUTPUT
 
@@ -176,7 +206,7 @@ jobs:
           class LambdaCli < Formula
             desc "Unofficial CLI and MCP server for Lambda cloud GPU instances"
             homepage "https://github.com/Strand-AI/lambda-cli"
-            url "https://github.com/Strand-AI/lambda-cli/archive/refs/tags/v${{ needs.release.outputs.version }}.tar.gz"
+            url "https://github.com/Strand-AI/lambda-cli/archive/refs/tags/v${{ needs.check-version.outputs.version }}.tar.gz"
             sha256 "${{ steps.sha256.outputs.sha256 }}"
             license "MIT"
             head "https://github.com/Strand-AI/lambda-cli.git", branch: "main"
@@ -201,16 +231,16 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add Formula/lambda-cli.rb
-          git commit -m "lambda-cli: update to ${{ needs.release.outputs.version }}"
+          git commit -m "lambda-cli: update to ${{ needs.check-version.outputs.version }}"
           git push
 
   publish-npm:
-    needs: [release, build]
+    needs: [check-version, release, build]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: v${{ needs.release.outputs.version }}
+          ref: v${{ needs.check-version.outputs.version }}
 
       - uses: actions/setup-node@v4
         with:
@@ -240,12 +270,12 @@ jobs:
         run: |
           cd npm/lambda-mcp
           # Update version in package.json
-          sed -i 's/"version": "0.0.0"/"version": "${{ needs.release.outputs.version }}"/' package.json
+          sed -i 's/"version": "0.0.0"/"version": "${{ needs.check-version.outputs.version }}"/' package.json
           # Update optional dependency versions
-          sed -i 's/"@strand-ai\/lambda-mcp-linux-x64": "0.0.0"/"@strand-ai\/lambda-mcp-linux-x64": "${{ needs.release.outputs.version }}"/' package.json
-          sed -i 's/"@strand-ai\/lambda-mcp-darwin-x64": "0.0.0"/"@strand-ai\/lambda-mcp-darwin-x64": "${{ needs.release.outputs.version }}"/' package.json
-          sed -i 's/"@strand-ai\/lambda-mcp-darwin-arm64": "0.0.0"/"@strand-ai\/lambda-mcp-darwin-arm64": "${{ needs.release.outputs.version }}"/' package.json
-          sed -i 's/"@strand-ai\/lambda-mcp-win32-x64": "0.0.0"/"@strand-ai\/lambda-mcp-win32-x64": "${{ needs.release.outputs.version }}"/' package.json
+          sed -i 's/"@strand-ai\/lambda-mcp-linux-x64": "0.0.0"/"@strand-ai\/lambda-mcp-linux-x64": "${{ needs.check-version.outputs.version }}"/' package.json
+          sed -i 's/"@strand-ai\/lambda-mcp-darwin-x64": "0.0.0"/"@strand-ai\/lambda-mcp-darwin-x64": "${{ needs.check-version.outputs.version }}"/' package.json
+          sed -i 's/"@strand-ai\/lambda-mcp-darwin-arm64": "0.0.0"/"@strand-ai\/lambda-mcp-darwin-arm64": "${{ needs.check-version.outputs.version }}"/' package.json
+          sed -i 's/"@strand-ai\/lambda-mcp-win32-x64": "0.0.0"/"@strand-ai\/lambda-mcp-win32-x64": "${{ needs.check-version.outputs.version }}"/' package.json
           npm install
           npm run build
           npm publish --access public
