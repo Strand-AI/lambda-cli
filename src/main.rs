@@ -208,6 +208,7 @@ fn list_instances(rt: &Runtime, client: &LambdaClient) -> Result<()> {
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn start_instance(
     rt: &Runtime,
     client: &LambdaClient,
@@ -403,6 +404,7 @@ fn list_running_instances(rt: &Runtime, client: &LambdaClient) -> Result<()> {
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn find_and_start_instance(
     rt: &Runtime,
     client: &LambdaClient,
