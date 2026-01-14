@@ -1,6 +1,7 @@
 # Lambda CLI
 
-> **⚠️ UNOFFICIAL PROJECT** — This is a community-built tool, not affiliated with or endorsed by Lambda.
+> [!CAUTION]
+> **UNOFFICIAL PROJECT** — This is a community-built tool, not affiliated with or endorsed by Lambda.
 
 [![CI](https://github.com/Strand-AI/lambda-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/Strand-AI/lambda-cli/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
