@@ -33,7 +33,8 @@ jobs:
 
           if [ "$VERSION" != "$LATEST_VERSION" ]; then
             # Verify this is a newer version (not older)
-            printf '%s\n%s\n' "$LATEST_VERSION" "$VERSION" | sort -V -C && IS_NEWER=false || IS_NEWER=true
+            # sort -V -C returns 0 if input is sorted; if [old, new] is sorted, new IS newer
+            printf '%s\n%s\n' "$LATEST_VERSION" "$VERSION" | sort -V -C && IS_NEWER=true || IS_NEWER=false
             if [ "$IS_NEWER" = "true" ] || [ "$LATEST_VERSION" = "0.0.0" ]; then
               echo "should_release=true" >> $GITHUB_OUTPUT
               echo "New version detected, will release $VERSION"
