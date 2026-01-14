@@ -2,7 +2,7 @@
 name = "lambda_cli"
 version = "0.4.0"
 edition = "2021"
-description = "CLI and MCP server for Lambda Labs cloud GPU instances"
+description = "Unofficial CLI and MCP server for Lambda cloud GPU instances"
 license = "MIT"
 repository = "https://github.com/Strand-AI/lambda-cli"
 

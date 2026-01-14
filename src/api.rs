@@ -135,7 +135,7 @@ enum ApiKeySource {
     Command(String),
 }
 
-/// Lambda Labs API client
+/// Lambda API client
 pub struct LambdaClient {
     client: Client,
     api_key_source: ApiKeySource,
@@ -244,7 +244,7 @@ impl LambdaClient {
             .header(AUTHORIZATION, format!("Bearer {}", api_key))
             .send()
             .await
-            .context("Failed to connect to Lambda Labs API")?;
+            .context("Failed to connect to Lambda API")?;
 
         if response.status().is_success() {
             Ok(())

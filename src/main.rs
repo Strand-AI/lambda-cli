@@ -8,16 +8,17 @@ use crossterm::{
     terminal::{Clear, ClearType},
 };
 use lambda_cli::api::{LambdaClient, LambdaError};
+use lambda_cli::notify::{InstanceReadyMessage, Notifier, NotifyConfig};
 use prettytable::{row, Table};
 use std::io::{stdout, Write};
 use std::time::{Duration, Instant};
 use tokio::runtime::Runtime;
 
-/// A command-line tool for Lambda Labs cloud GPU API
+/// A command-line tool for Lambda cloud GPU API
 #[derive(Parser)]
 #[command(name = "lambda")]
 #[command(version = "0.2.0")]
-#[command(about = "A command-line tool for Lambda Labs cloud GPU API", long_about = None)]
+#[command(about = "A command-line tool for Lambda cloud GPU API", long_about = None)]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
@@ -44,6 +45,9 @@ enum Commands {
         /// Filesystem name to attach (must be in same region)
         #[arg(short, long)]
         filesystem: Option<String>,
+        /// Disable notifications even if LAMBDA_NOTIFY_* env vars are set
+        #[arg(long)]
+        no_notify: bool,
     },
     /// Stop a specified GPU instance
     Stop {
@@ -70,6 +74,9 @@ enum Commands {
         /// Filesystem name to attach when launched (must be in same region)
         #[arg(short, long)]
         filesystem: Option<String>,
+        /// Disable notifications even if LAMBDA_NOTIFY_* env vars are set
+        #[arg(long)]
+        no_notify: bool,
     },
     /// List all filesystems (persistent storage)
     Filesystems,
@@ -112,6 +119,7 @@ fn run() -> Result<()> {
             name,
             region,
             filesystem,
+            no_notify,
         }) => start_instance(
             &rt,
             &client,
@@ -120,6 +128,7 @@ fn run() -> Result<()> {
             name.as_deref(),
             region.as_deref(),
             filesystem.as_deref(),
+            *no_notify,
         ),
         Some(Commands::Stop { instance_id }) => stop_instance(&rt, &client, instance_id),
         Some(Commands::Running) => list_running_instances(&rt, &client),
@@ -129,6 +138,7 @@ fn run() -> Result<()> {
             interval,
             name,
             filesystem,
+            no_notify,
         }) => find_and_start_instance(
             &rt,
             &client,
@@ -137,6 +147,7 @@ fn run() -> Result<()> {
             *interval,
             name.as_deref(),
             filesystem.as_deref(),
+            *no_notify,
         ),
         Some(Commands::Filesystems) => list_filesystems(&rt, &client),
         Some(Commands::CreateFilesystem { name, region }) => {
@@ -197,6 +208,7 @@ fn list_instances(rt: &Runtime, client: &LambdaClient) -> Result<()> {
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn start_instance(
     rt: &Runtime,
     client: &LambdaClient,
@@ -205,7 +217,22 @@ fn start_instance(
     name: Option<&str>,
     region: Option<&str>,
     filesystem: Option<&str>,
+    no_notify: bool,
 ) -> Result<()> {
+    // Auto-enable notifications if env vars are configured (unless --no-notify)
+    let notifier = if no_notify {
+        None
+    } else {
+        NotifyConfig::from_env().map(|config| {
+            println!(
+                "{} Notifications enabled for: {}",
+                "Info:".blue(),
+                config.configured_channels().join(", ")
+            );
+            Notifier::new(config)
+        })
+    };
+
     let fs_info = filesystem
         .map(|f| format!(" with filesystem '{}'", f.magenta()))
         .unwrap_or_default();
@@ -217,9 +244,8 @@ fn start_instance(
         fs_info
     );
 
-    let result = rt.block_on(client.launch_instance_with_filesystem(
-        gpu, ssh, name, region, filesystem,
-    ))?;
+    let result =
+        rt.block_on(client.launch_instance_with_filesystem(gpu, ssh, name, region, filesystem))?;
 
     println!(
         "{} Instance {} launched in region {}",
@@ -255,19 +281,40 @@ fn start_instance(
                 );
                 stdout().flush().ok();
 
-                if status == "active" {
+                // Ready when IP is available (don't wait for "active" status)
+                if let Some(ref ip) = instance.ip {
                     println!();
-                    if let Some(ip) = instance.ip {
-                        println!(
-                            "{} Instance is active! SSH: {}",
-                            "Ready!".green().bold(),
-                            format!("ssh ubuntu@{}", ip).cyan()
-                        );
-                    } else {
-                        println!(
-                            "{} Instance is active but IP not yet assigned",
-                            "Ready!".green().bold()
-                        );
+                    println!(
+                        "{} Instance is ready! SSH: {}",
+                        "Ready!".green().bold(),
+                        format!("ssh ubuntu@{}", ip).cyan()
+                    );
+
+                    // Send notification if configured
+                    if let Some(ref notifier) = notifier {
+                        let msg = InstanceReadyMessage {
+                            instance_id: result.instance_id.clone(),
+                            instance_name: name.map(String::from),
+                            ip: ip.clone(),
+                            gpu_type: gpu.to_string(),
+                            region: result.region.clone(),
+                        };
+
+                        println!("{} Sending notifications...", "Info:".blue());
+                        let results = rt.block_on(notifier.send_all(&msg));
+                        for (channel, result) in results {
+                            match result {
+                                Ok(()) => {
+                                    println!("  {} {} notification sent", "✓".green(), channel)
+                                }
+                                Err(e) => println!(
+                                    "  {} {} notification failed: {}",
+                                    "✗".red(),
+                                    channel,
+                                    e
+                                ),
+                            }
+                        }
                     }
                     break;
                 } else if status == "terminated" || status == "unhealthy" {
@@ -351,6 +398,7 @@ fn list_running_instances(rt: &Runtime, client: &LambdaClient) -> Result<()> {
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn find_and_start_instance(
     rt: &Runtime,
     client: &LambdaClient,
@@ -359,6 +407,7 @@ fn find_and_start_instance(
     interval: u64,
     name: Option<&str>,
     filesystem: Option<&str>,
+    no_notify: bool,
 ) -> Result<()> {
     if ssh.is_empty() {
         return Err(LambdaError::SshKeyRequired.into());
@@ -391,7 +440,7 @@ fn find_and_start_instance(
                     regions.join(", ").blue()
                 );
 
-                return start_instance(rt, client, gpu, ssh, name, None, filesystem);
+                return start_instance(rt, client, gpu, ssh, name, None, filesystem, no_notify);
             }
             Ok(_) => {
                 // No availability

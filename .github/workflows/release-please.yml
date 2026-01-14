@@ -201,7 +201,7 @@ jobs:
         run: |
           cat > homebrew-tap/Formula/lambda-cli.rb << 'EOF'
           class LambdaCli < Formula
-            desc "CLI and MCP server for Lambda Labs cloud GPU instances"
+            desc "Unofficial CLI and MCP server for Lambda cloud GPU instances"
             homepage "https://github.com/Strand-AI/lambda-cli"
             url "https://github.com/Strand-AI/lambda-cli/archive/refs/tags/v${{ needs.release.outputs.version }}.tar.gz"
             sha256 "${{ steps.sha256.outputs.sha256 }}"

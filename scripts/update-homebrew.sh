@@ -46,7 +46,7 @@ echo "Updating formula at $FORMULA_PATH..."
 
 cat > "$FORMULA_PATH" << EOF
 class LambdaCli < Formula
-  desc "CLI tool for Lambda Labs cloud GPU API"
+  desc "Unofficial CLI tool for Lambda cloud GPU API"
   homepage "https://github.com/Strand-AI/lambda-cli"
   url "https://github.com/Strand-AI/lambda-cli/archive/refs/tags/v${VERSION}.tar.gz"
   sha256 "${SHA256}"
